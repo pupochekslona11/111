@@ -93,6 +93,7 @@ function handleApi_(p) {
       return {ok:true, data:getDashboard(month)};
     }
 
+    if (action === 'capital_bundle') return {ok:true, data:getCapitalBundle_()};
     if (action === 'capital_dashboard') return {ok:true, data:getCapitalDashboard()};
     if (action === 'capital_add' || action === 'capital_update') {
       upsertCapitalSource_({
@@ -504,6 +505,51 @@ function capitalPerformance_(history,flows,total) {
   };
 }
 
+function buildMoneyCalendar_(sources, liabilities) {
+  const today=new Date();
+  const start=new Date(today.getFullYear(),today.getMonth(),today.getDate());
+  const end=new Date(start.getTime()+120*86400000);
+  const events=[];
+
+  (sources||[]).forEach(s=>{
+    if (!s.maturityDate) return;
+    const d=new Date(s.maturityDate+'T12:00:00');
+    if (d>=start&&d<=end) events.push({
+      date:s.maturityDate,type:'Погашение',name:s.name,amount:s.amount
+    });
+  });
+
+  (liabilities||[]).forEach(x=>{
+    if (x.dueDate) {
+      const d=new Date(x.dueDate+'T12:00:00');
+      if (d>=start&&d<=end) events.push({
+        date:x.dueDate,type:'Платёж / погашение',name:x.name,amount:x.balance
+      });
+    }
+    if (x.graceEnd) {
+      const d=new Date(x.graceEnd+'T12:00:00');
+      if (d>=start&&d<=end) events.push({
+        date:x.graceEnd,type:'Конец грейса',name:x.name,amount:x.balance
+      });
+    }
+  });
+
+  return events.sort((a,b)=>a.date.localeCompare(b.date));
+}
+
+function getCapitalBundle_() {
+  const capital=getCapitalDashboard();
+  const liabilities=getLiabilities_();
+  const goals=getGoals_();
+
+  return {
+    capital:capital,
+    liabilities:liabilities,
+    goals:goals,
+    calendar:buildMoneyCalendar_(capital.sources||[], liabilities)
+  };
+}
+
 function getCapitalDashboard() {
   const sources=getCapitalSources_();
   const history=getCapitalHistory_();
@@ -687,31 +733,7 @@ function getStatsDashboard_() {
 }
 
 function getMoneyCalendar_() {
-  const today=new Date();
-  const start=new Date(today.getFullYear(),today.getMonth(),today.getDate());
-  const end=new Date(start.getTime()+120*86400000);
-  const events=[];
-
-  getCapitalSources_().forEach(s=>{
-    if (!s.maturityDate) return;
-    const d=new Date(s.maturityDate+'T12:00:00');
-    if (d>=start&&d<=end) events.push({
-      date:s.maturityDate,type:'Погашение',name:s.name,amount:s.amount
-    });
-  });
-
-  getLiabilities_().forEach(x=>{
-    if (x.dueDate) {
-      const d=new Date(x.dueDate+'T12:00:00');
-      if (d>=start&&d<=end) events.push({date:x.dueDate,type:'Платёж / погашение',name:x.name,amount:x.balance});
-    }
-    if (x.graceEnd) {
-      const d=new Date(x.graceEnd+'T12:00:00');
-      if (d>=start&&d<=end) events.push({date:x.graceEnd,type:'Конец грейса',name:x.name,amount:x.balance});
-    }
-  });
-
-  return events.sort((a,b)=>a.date.localeCompare(b.date));
+  return buildMoneyCalendar_(getCapitalSources_(), getLiabilities_());
 }
 
 function findRowById_(sh,id) {
