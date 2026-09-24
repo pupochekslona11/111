@@ -118,7 +118,8 @@ function handleApi_(p) {
         name: String(p.name || 'Без названия'),
         amount: Number(p.amount),
         rate: Number(p.rate || 0),
-        note: String(p.note || '')
+        note: String(p.note || ''),
+        maturityDate: String(p.maturityDate || '')
       });
       saveCapitalSnapshot_();
       return { ok: true, data: getCapitalDashboard() };
@@ -182,7 +183,7 @@ function verifySignedRequest_(p) {
 }
 
 function canonicalForSign_(p) {
-  const order = ['action','id','date','type','amount','category','raw','month','sourceType','name','rate','note','monthlyContribution','ts','nonce'];
+  const order = ['action','id','date','type','amount','category','raw','month','sourceType','name','rate','note','maturityDate','monthlyContribution','ts','nonce'];
   return order
     .filter(k => p[k] !== undefined && p[k] !== null)
     .map(k => k + '=' + encodeURIComponent(String(p[k])))
@@ -321,12 +322,20 @@ function getCapitalSheet_() {
 
   if (!sh) {
     sh = ss.insertSheet(CAPITAL_SHEET_NAME);
-    sh.appendRow(['ID','Тип','Название','Сумма','Доходность % годовых','Комментарий','Создано','Обновлено']);
+    sh.appendRow(['ID','Тип','Название','Сумма','Доходность % годовых','Комментарий','Создано','Обновлено','Дата погашения / окончания']);
     sh.setFrozenRows(1);
-    sh.getRange('A1:H1').setFontWeight('bold');
+    sh.getRange('A1:I1').setFontWeight('bold');
     sh.getRange('D:D').setNumberFormat('#,##0.00');
     sh.getRange('E:E').setNumberFormat('0.00');
-    sh.autoResizeColumns(1, 8);
+    sh.getRange('I:I').setNumberFormat('dd.mm.yyyy');
+    sh.autoResizeColumns(1, 9);
+  } else {
+    const header = String(sh.getRange('I1').getValue() || '').trim();
+    if (!header) {
+      sh.getRange('I1').setValue('Дата погашения / окончания').setFontWeight('bold');
+      sh.getRange('I:I').setNumberFormat('dd.mm.yyyy');
+      sh.autoResizeColumn(9);
+    }
   }
 
   return sh;
@@ -353,7 +362,7 @@ function getCapitalSources_() {
   const sh = getCapitalSheet_();
   if (sh.getLastRow() < 2) return [];
 
-  return sh.getRange(2, 1, sh.getLastRow() - 1, 8).getValues()
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 9).getValues()
     .filter(row => String(row[0] || '').trim())
     .map(row => ({
       id: String(row[0]),
@@ -363,16 +372,24 @@ function getCapitalSources_() {
       rate: Number(row[4]) || 0,
       note: String(row[5] || ''),
       created: row[6] ? Utilities.formatDate(new Date(row[6]), 'Europe/Moscow', 'yyyy-MM-dd') : '',
-      updated: row[7] ? Utilities.formatDate(new Date(row[7]), 'Europe/Moscow', 'yyyy-MM-dd') : ''
+      updated: row[7] ? Utilities.formatDate(new Date(row[7]), 'Europe/Moscow', 'yyyy-MM-dd') : '',
+      maturityDate: row[8] ? Utilities.formatDate(new Date(row[8]), 'Europe/Moscow', 'yyyy-MM-dd') : ''
     }));
 }
 
 function upsertCapitalSource_(source) {
   const amount = Number(source.amount);
   const rate = Number(source.rate || 0);
+  let maturity = '';
 
   if (!Number.isFinite(amount) || amount < 0) throw new Error('Некорректная сумма капитала.');
   if (!Number.isFinite(rate) || rate < -100 || rate > 10000) throw new Error('Некорректная доходность.');
+
+  if (String(source.maturityDate || '').trim()) {
+    const parsed = new Date(String(source.maturityDate) + 'T12:00:00');
+    if (isNaN(parsed)) throw new Error('Некорректная дата погашения.');
+    maturity = parsed;
+  }
 
   const sh = getCapitalSheet_();
   const now = new Date();
@@ -387,7 +404,7 @@ function upsertCapitalSource_(source) {
 
   if (rowIndex > 0) {
     const created = sh.getRange(rowIndex, 7).getValue() || now;
-    sh.getRange(rowIndex, 1, 1, 8).setValues([[
+    sh.getRange(rowIndex, 1, 1, 9).setValues([[
       id,
       String(source.sourceType || 'Другое').slice(0, 80),
       String(source.name || 'Без названия').slice(0, 120),
@@ -395,7 +412,8 @@ function upsertCapitalSource_(source) {
       rate,
       String(source.note || '').slice(0, 300),
       created,
-      now
+      now,
+      maturity
     ]]);
   } else {
     sh.appendRow([
@@ -406,7 +424,8 @@ function upsertCapitalSource_(source) {
       rate,
       String(source.note || '').slice(0, 300),
       now,
-      now
+      now,
+      maturity
     ]);
   }
 
