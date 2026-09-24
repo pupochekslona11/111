@@ -18,6 +18,14 @@ h1{font-size:26px;margin:2px 0 16px}.gear{border:0;background:transparent;color:
 .manual{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:18px 0}.manual input,.manual select,.settings input{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:13px;padding:13px 14px;font-size:16px}.wide{grid-column:1/-1}
 button.action{background:var(--card2);color:var(--text);border:1px solid var(--line);border-radius:13px;padding:13px 14px;font-weight:700;cursor:pointer}.row{display:flex;gap:9px;margin:10px 0 20px}.row>*{flex:1}.section-title{display:flex;justify-content:space-between;align-items:center}.section-title h2{font-size:19px}.count{color:var(--muted);font-size:13px}
 .ops{display:flex;flex-direction:column;gap:8px}.op{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:13px;display:flex;justify-content:space-between;gap:12px}.cat{font-weight:700}.date,.raw{color:var(--muted);font-size:12px;margin-top:3px}.amt{font-weight:800;white-space:nowrap}
+.opRight{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+.opActions{display:flex;gap:6px}
+.iconBtn{width:38px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--text);font-size:17px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.iconBtn:active{transform:scale(.96)}
+.iconBtn.delete{color:#ff8a91}
+.editGrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.editGrid input,.editGrid select{width:100%;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:13px;padding:13px 14px;font-size:16px}
+.editGrid .wide{grid-column:1/-1}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#272d39;color:#fff;padding:11px 15px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;max-width:90%;text-align:center;z-index:20}#toast.show{opacity:1}
 .modal{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;padding:18px;z-index:15}.modal.show{display:flex}.settings{width:min(560px,100%);background:#151922;border:1px solid var(--line);border-radius:18px;padding:18px}.settings h3{margin:0 0 12px}.settings label{display:block;color:var(--muted);font-size:13px;margin:12px 0 6px}.settings input{width:100%}.settings .buttons{display:flex;gap:9px;margin-top:14px}.settings .buttons button{flex:1}.warning{background:#2a2114;border:1px solid #4a3820;border-radius:12px;padding:11px;color:#f0c883;font-size:13px;margin-top:10px}
 @media(max-width:480px){.wrap{padding:14px 12px 34px}h1{font-size:24px}.stat{padding:14px}#mic{width:104px;height:104px}}
@@ -34,7 +42,7 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 </div>
 <div class="voice">
 <button id="mic" aria-label="Голосовой ввод">🎙️</button>
-<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v1.3</div>
+<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v1.5</div>
 <div class="example">Например: «трата две тысячи продукты»<br>или «поступление 50 тысяч зарплата»</div>
 </div>
 <div class="manual">
@@ -61,9 +69,26 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 <div class="buttons"><button class="action" id="closeSettings">Закрыть</button><button class="action" id="saveSettings">Сохранить</button></div>
 </div></div>
 
+<div id="editModal" class="modal">
+<div class="settings">
+<h3>Редактировать операцию</h3>
+<div class="editGrid">
+<select id="editType">
+<option value="expense">Расход</option>
+<option value="income">Доход</option>
+</select>
+<input id="editAmount" inputmode="decimal" placeholder="Сумма">
+<input id="editCategory" class="wide" placeholder="Категория">
+</div>
+<div class="buttons">
+<button class="action" id="cancelEdit">Отмена</button>
+<button class="action" id="saveEdit">Сохранить</button>
+</div>
+</div></div>
+
 <script>
 const $=s=>document.querySelector(s);
-const state={data:{income:0,expense:0,balance:0,operations:[]},lastId:null};
+const state={data:{income:0,expense:0,balance:0,operations:[]},lastId:null,editing:null};
 const KAPI='vf_api', KKEY='vf_key';
 
 (function bootstrapConfig(){
@@ -112,12 +137,104 @@ function render(data){
   const ops=state.data.operations||[];
   $('#count').textContent=ops.length+' шт.';
   const root=$('#ops');root.innerHTML='';
-  if(!ops.length){root.innerHTML='<div style="color:var(--muted);padding:10px 2px">За этот месяц операций пока нет.</div>';return}
+  if(!ops.length){
+    root.innerHTML='<div style="color:var(--muted);padding:10px 2px">За этот месяц операций пока нет.</div>';
+    return;
+  }
+
   ops.forEach(o=>{
-    const el=document.createElement('div');el.className='op';
-    el.innerHTML='<div><div class="cat">'+esc(o.category)+'</div><div class="date">'+esc((o.date||'').split('-').reverse().join('.'))+'</div><div class="raw">'+esc(o.raw||'')+'</div></div><div class="amt '+(o.type==='income'?'good':'bad')+'">'+(o.type==='income'?'+':'−')+rub(o.amount)+'</div>';
+    const el=document.createElement('div');
+    el.className='op';
+
+    el.innerHTML=
+      '<div style="min-width:0;flex:1">'+
+        '<div class="cat">'+esc(o.category)+'</div>'+
+        '<div class="date">'+esc((o.date||'').split('-').reverse().join('.'))+'</div>'+
+        '<div class="raw">'+esc(o.raw||'')+'</div>'+
+      '</div>'+
+      '<div class="opRight">'+
+        '<div class="amt '+(o.type==='income'?'good':'bad')+'">'+(o.type==='income'?'+':'−')+rub(o.amount)+'</div>'+
+        '<div class="opActions">'+
+          '<button class="iconBtn editBtn" title="Редактировать" aria-label="Редактировать">✏️</button>'+
+          '<button class="iconBtn delete deleteBtn" title="Удалить" aria-label="Удалить">🗑️</button>'+
+        '</div>'+
+      '</div>';
+
+    el.querySelector('.editBtn').onclick=()=>openEdit(o);
+    el.querySelector('.deleteBtn').onclick=()=>deleteOne(o);
     root.appendChild(el);
   });
+}
+
+function openEdit(o){
+  state.editing=o;
+  $('#editType').value=o.type;
+  $('#editAmount').value=o.amount;
+  $('#editCategory').value=o.category||'';
+  $('#editModal').classList.add('show');
+}
+
+async function deleteOne(o){
+  if(!confirm('Удалить эту операцию?'))return;
+  try{
+    const r=await api({action:'delete',id:o.id,month:$('#month').value});
+    if(state.lastId===o.id){
+      state.lastId=null;
+      $('#undo').disabled=true;
+    }
+    render(r.data);
+    toast('Операция удалена');
+  }catch(e){
+    toast('Ошибка удаления: '+e.message);
+  }
+}
+
+async function saveEditedOperation(){
+  const old=state.editing;
+  if(!old)return;
+
+  const amount=Number($('#editAmount').value.replace(',','.'));
+  const category=($('#editCategory').value||'Без категории').trim();
+  const type=$('#editType').value;
+
+  if(!(amount>0)){
+    toast('Введи сумму');
+    return;
+  }
+
+  const newId=uid();
+  $('#saveEdit').disabled=true;
+
+  try{
+    // Сначала создаём исправленную запись, чтобы при проблеме старая не потерялась.
+    await api({
+      action:'add',
+      id:newId,
+      date:old.date||dateNow(),
+      type:type,
+      amount:amount,
+      category:category,
+      raw:'Отредактировано вручную',
+      month:$('#month').value
+    });
+
+    const r=await api({
+      action:'delete',
+      id:old.id,
+      month:$('#month').value
+    });
+
+    state.editing=null;
+    state.lastId=newId;
+    $('#undo').disabled=false;
+    $('#editModal').classList.remove('show');
+    render(r.data);
+    toast('Операция изменена');
+  }catch(e){
+    toast('Ошибка редактирования: '+e.message);
+  }finally{
+    $('#saveEdit').disabled=false;
+  }
 }
 
 async function load(){
@@ -296,6 +413,8 @@ function parseCommand(raw){
 }
 
 $('#month').value=monthNow();$('#month').addEventListener('change',load);
+$('#cancelEdit').onclick=()=>{state.editing=null;$('#editModal').classList.remove('show')};
+$('#saveEdit').onclick=saveEditedOperation;
 $('#saveManual').onclick=()=>{const a=Number($('#amount').value.replace(',','.'));if(!(a>0))return toast('Введи сумму');save({type:$('#type').value,amount:a,category:($('#category').value||'Без категории').trim(),raw:'Ручной ввод'});$('#amount').value='';$('#category').value=''};
 $('#undo').onclick=async()=>{if(!state.lastId)return;try{const r=await api({action:'delete',id:state.lastId,month:$('#month').value});state.lastId=null;$('#undo').disabled=true;render(r.data);toast('Последняя запись удалена')}catch(e){toast(e.message)}};
 $('#csv').onclick=()=>{const rows=[['Дата','Тип','Сумма','Категория','Команда']];(state.data.operations||[]).forEach(o=>rows.push([o.date,o.type==='income'?'Доход':'Расход',o.amount,o.category,o.raw]));const csv='\uFEFF'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')).join('\n');const b=new Blob([csv],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='finance-'+$('#month').value+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)};
