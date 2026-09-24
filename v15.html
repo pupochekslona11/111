@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Мои финансы</title>
+<style>
+:root{color-scheme:dark;--bg:#0f1115;--card:#171a21;--card2:#1d222c;--text:#f5f7fb;--muted:#9ba7bc;--line:#2b3240;--good:#4fd58a;--bad:#ff646d;--accent:#78a2ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:680px;margin:auto;padding:18px 16px 42px}header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+h1{font-size:26px;margin:2px 0 16px}.gear{border:0;background:transparent;color:var(--muted);font-size:23px;padding:6px;cursor:pointer}
+.month{width:100%;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:16px;padding:14px 16px;font-size:16px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin:12px 0}.stat{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px}.stat small{color:var(--muted)}.stat b{display:block;font-size:22px;margin-top:6px}.balance{grid-column:1/-1}.good{color:var(--good)}.bad{color:var(--bad)}
+.voice{display:flex;flex-direction:column;align-items:center;margin:28px 0 18px}#mic{width:112px;height:112px;border-radius:50%;border:0;background:var(--accent);font-size:48px;box-shadow:0 10px 30px #0008;cursor:pointer;transition:.15s}#mic:active{transform:scale(.97)}#mic.listening{transform:scale(1.05);box-shadow:0 0 0 12px #78a2ff22,0 10px 30px #0008}
+#hint{text-align:center;color:#b7c6e6;margin-top:14px;min-height:43px}.example{text-align:center;color:var(--muted);font-size:13px;line-height:1.45}
+.manual{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:18px 0}.manual input,.manual select,.settings input{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:13px;padding:13px 14px;font-size:16px}.wide{grid-column:1/-1}
+button.action{background:var(--card2);color:var(--text);border:1px solid var(--line);border-radius:13px;padding:13px 14px;font-weight:700;cursor:pointer}.row{display:flex;gap:9px;margin:10px 0 20px}.row>*{flex:1}.section-title{display:flex;justify-content:space-between;align-items:center}.section-title h2{font-size:19px}.count{color:var(--muted);font-size:13px}
+.ops{display:flex;flex-direction:column;gap:8px}.op{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:13px;display:flex;justify-content:space-between;gap:12px}.cat{font-weight:700}.date,.raw{color:var(--muted);font-size:12px;margin-top:3px}.amt{font-weight:800;white-space:nowrap}
+.opRight{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+.opActions{display:flex;gap:6px}
+.iconBtn{width:38px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--text);font-size:17px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.iconBtn:active{transform:scale(.96)}
+.iconBtn.delete{color:#ff8a91}
+.editGrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.editGrid input,.editGrid select{width:100%;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:13px;padding:13px 14px;font-size:16px}
+.editGrid .wide{grid-column:1/-1}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#272d39;color:#fff;padding:11px 15px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;max-width:90%;text-align:center;z-index:20}#toast.show{opacity:1}
+.modal{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;padding:18px;z-index:15}.modal.show{display:flex}.settings{width:min(560px,100%);background:#151922;border:1px solid var(--line);border-radius:18px;padding:18px}.settings h3{margin:0 0 12px}.settings label{display:block;color:var(--muted);font-size:13px;margin:12px 0 6px}.settings input{width:100%}.settings .buttons{display:flex;gap:9px;margin-top:14px}.settings .buttons button{flex:1}.warning{background:#2a2114;border:1px solid #4a3820;border-radius:12px;padding:11px;color:#f0c883;font-size:13px;margin-top:10px}
+@media(max-width:480px){.wrap{padding:14px 12px 34px}h1{font-size:24px}.stat{padding:14px}#mic{width:104px;height:104px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><h1>💰 Мои финансы</h1><button class="gear" id="settingsBtn" aria-label="Настройки">⚙️</button></header>
+<input id="month" class="month" type="month">
+<div class="stats">
+<div class="stat"><small>Доходы</small><b id="income" class="good">0 ₽</b></div>
+<div class="stat"><small>Расходы</small><b id="expense" class="bad">0 ₽</b></div>
+<div class="stat balance"><small>Итог</small><b id="balance">0 ₽</b></div>
+</div>
+<div class="voice">
+<button id="mic" aria-label="Голосовой ввод">🎙️</button>
+<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v1.5</div>
+<div class="example">Например: «трата две тысячи продукты»<br>или «поступление 50 тысяч зарплата»</div>
+</div>
+<div class="manual">
+<select id="type"><option value="expense">Расход</option><option value="income">Доход</option></select>
+<input id="amount" inputmode="decimal" placeholder="Сумма">
+<input id="category" class="wide" placeholder="Категория">
+<button id="saveManual" class="action wide">Добавить вручную</button>
+</div>
+<div class="row">
+<button id="undo" class="action" disabled>↩ Отменить последнюю</button>
+<button id="csv" class="action">CSV</button>
+</div>
+<div class="section-title"><h2>Операции</h2><span id="count" class="count"></span></div>
+<div id="ops" class="ops"></div>
+</div>
+<div id="toast"></div>
+
+<div id="settingsModal" class="modal">
+<div class="settings">
+<h3>Настройки подключения</h3>
+<label>Apps Script URL</label><input id="apiInput" placeholder="https://script.google.com/macros/s/.../exec">
+<label>Ключ</label><input id="keyInput" type="password" placeholder="Ключ доступа">
+<div class="warning">Эти данные хранятся только в браузере на этом устройстве.</div>
+<div class="buttons"><button class="action" id="closeSettings">Закрыть</button><button class="action" id="saveSettings">Сохранить</button></div>
+</div></div>
+
+<div id="editModal" class="modal">
+<div class="settings">
+<h3>Редактировать операцию</h3>
+<div class="editGrid">
+<select id="editType">
+<option value="expense">Расход</option>
+<option value="income">Доход</option>
+</select>
+<input id="editAmount" inputmode="decimal" placeholder="Сумма">
+<input id="editCategory" class="wide" placeholder="Категория">
+</div>
+<div class="buttons">
+<button class="action" id="cancelEdit">Отмена</button>
+<button class="action" id="saveEdit">Сохранить</button>
+</div>
+</div></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const state={data:{income:0,expense:0,balance:0,operations:[]},lastId:null,editing:null};
+const KAPI='vf_api', KKEY='vf_key';
+
+(function bootstrapConfig(){
+  const p=new URLSearchParams(location.hash.slice(1));
+  if(p.get('api')&&p.get('key')){
+    localStorage.setItem(KAPI,p.get('api'));
+    localStorage.setItem(KKEY,p.get('key'));
+    history.replaceState(null,'',location.pathname+location.search);
+  }
+})();
+
+function cfg(){return {api:localStorage.getItem(KAPI)||'',key:localStorage.getItem(KKEY)||''}}
+function rub(n){return new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(Number(n)||0)}
+function monthNow(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')}
+function dateNow(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function uid(){return crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(16).slice(2)}
+function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2400)}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+
+function api(params){
+  return new Promise((resolve,reject)=>{
+    const c=cfg();
+    if(!c.api||!c.key){openSettings();return reject(new Error('Сначала настрой подключение'))}
+    const cb='vf_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    const s=document.createElement('script');
+    const timer=setTimeout(()=>done(new Error('Сервер не ответил')),18000);
+    function cleanup(){clearTimeout(timer);delete window[cb];s.remove()}
+    function done(err,data){cleanup();err?reject(err):resolve(data)}
+    window[cb]=data=>{
+      if(!data||data.ok===false) done(new Error((data&&data.error)||'Ошибка API'));
+      else done(null,data);
+    };
+    const u=new URL(c.api);
+    Object.entries(Object.assign({},params,{key:c.key,callback:cb,_:Date.now()})).forEach(([k,v])=>u.searchParams.set(k,v));
+    s.src=u.toString(); s.async=true; s.onerror=()=>done(new Error('Не удалось подключиться к Apps Script'));
+    document.head.appendChild(s);
+  });
+}
+
+function render(data){
+  state.data=data||state.data;
+  $('#income').textContent=rub(state.data.income);
+  $('#expense').textContent=rub(state.data.expense);
+  $('#balance').textContent=rub(state.data.balance);
+  $('#balance').className=(Number(state.data.balance)>=0?'good':'bad');
+  const ops=state.data.operations||[];
+  $('#count').textContent=ops.length+' шт.';
+  const root=$('#ops');root.innerHTML='';
+  if(!ops.length){
+    root.innerHTML='<div style="color:var(--muted);padding:10px 2px">За этот месяц операций пока нет.</div>';
+    return;
+  }
+
+  ops.forEach(o=>{
+    const el=document.createElement('div');
+    el.className='op';
+
+    el.innerHTML=
+      '<div style="min-width:0;flex:1">'+
+        '<div class="cat">'+esc(o.category)+'</div>'+
+        '<div class="date">'+esc((o.date||'').split('-').reverse().join('.'))+'</div>'+
+        '<div class="raw">'+esc(o.raw||'')+'</div>'+
+      '</div>'+
+      '<div class="opRight">'+
+        '<div class="amt '+(o.type==='income'?'good':'bad')+'">'+(o.type==='income'?'+':'−')+rub(o.amount)+'</div>'+
+        '<div class="opActions">'+
+          '<button class="iconBtn editBtn" title="Редактировать" aria-label="Редактировать">✏️</button>'+
+          '<button class="iconBtn delete deleteBtn" title="Удалить" aria-label="Удалить">🗑️</button>'+
+        '</div>'+
+      '</div>';
+
+    el.querySelector('.editBtn').onclick=()=>openEdit(o);
+    el.querySelector('.deleteBtn').onclick=()=>deleteOne(o);
+    root.appendChild(el);
+  });
+}
+
+function openEdit(o){
+  state.editing=o;
+  $('#editType').value=o.type;
+  $('#editAmount').value=o.amount;
+  $('#editCategory').value=o.category||'';
+  $('#editModal').classList.add('show');
+}
+
+async function deleteOne(o){
+  if(!confirm('Удалить эту операцию?'))return;
+  try{
+    const r=await api({action:'delete',id:o.id,month:$('#month').value});
+    if(state.lastId===o.id){
+      state.lastId=null;
+      $('#undo').disabled=true;
+    }
+    render(r.data);
+    toast('Операция удалена');
+  }catch(e){
+    toast('Ошибка удаления: '+e.message);
+  }
+}
+
+async function saveEditedOperation(){
+  const old=state.editing;
+  if(!old)return;
+
+  const amount=Number($('#editAmount').value.replace(',','.'));
+  const category=($('#editCategory').value||'Без категории').trim();
+  const type=$('#editType').value;
+
+  if(!(amount>0)){
+    toast('Введи сумму');
+    return;
+  }
+
+  const newId=uid();
+  $('#saveEdit').disabled=true;
+
+  try{
+    // Сначала создаём исправленную запись, чтобы при проблеме старая не потерялась.
+    await api({
+      action:'add',
+      id:newId,
+      date:old.date||dateNow(),
+      type:type,
+      amount:amount,
+      category:category,
+      raw:'Отредактировано вручную',
+      month:$('#month').value
+    });
+
+    const r=await api({
+      action:'delete',
+      id:old.id,
+      month:$('#month').value
+    });
+
+    state.editing=null;
+    state.lastId=newId;
+    $('#undo').disabled=false;
+    $('#editModal').classList.remove('show');
+    render(r.data);
+    toast('Операция изменена');
+  }catch(e){
+    toast('Ошибка редактирования: '+e.message);
+  }finally{
+    $('#saveEdit').disabled=false;
+  }
+}
+
+async function load(){
+  try{
+    $('#hint').textContent='Обновляю данные…';
+    const r=await api({action:'dashboard',month:$('#month').value});
+    render(r.data);
+    $('#hint').textContent='Нажми и скажи операцию';
+  }catch(e){
+    $('#hint').textContent=e.message;
+  }
+}
+
+async function save(op){
+  try{
+    const id=uid();
+    $('#hint').textContent='Сохраняю…';
+    const r=await api({action:'add',id:id,date:dateNow(),type:op.type,amount:op.amount,category:op.category||'Без категории',raw:op.raw||'',month:$('#month').value});
+    state.lastId=id;$('#undo').disabled=false;
+    render(r.data);
+    $('#hint').textContent=(op.type==='expense'?'Расход ':'Доход ')+rub(op.amount)+' — '+(op.category||'Без категории');
+    toast('Записано');
+  }catch(e){$('#hint').textContent='Ошибка: '+e.message;toast(e.message)}
+}
+
+const units={'ноль':0,'один':1,'одна':1,'одно':1,'два':2,'две':2,'три':3,'четыре':4,'пять':5,'шесть':6,'семь':7,'восемь':8,'девять':9,'десять':10,'одиннадцать':11,'двенадцать':12,'тринадцать':13,'четырнадцать':14,'пятнадцать':15,'шестнадцать':16,'семнадцать':17,'восемнадцать':18,'девятнадцать':19,'двадцать':20,'тридцать':30,'сорок':40,'пятьдесят':50,'шестьдесят':60,'семьдесят':70,'восемьдесят':80,'девяносто':90,'сто':100,'двести':200,'триста':300,'четыреста':400,'пятьсот':500,'шестьсот':600,'семьсот':700,'восемьсот':800,'девятьсот':900};
+const scales={'тысяча':1000,'тысячи':1000,'тысяч':1000,'миллион':1000000,'миллиона':1000000,'миллионов':1000000};
+function wordNumber(tokens){
+  let total=0,current=0,used=[];
+  for(let i=0;i<tokens.length;i++){
+    const w=tokens[i];
+    if(Object.prototype.hasOwnProperty.call(units,w)){current+=units[w];used.push(i);continue}
+    if(Object.prototype.hasOwnProperty.call(scales,w)){current=current||1;total+=current*scales[w];current=0;used.push(i);continue}
+  }
+  return {value:total+current,used:used};
+}
+function parseNumericAmount(text){
+  // Берём первую цифровую сумму из фразы максимально терпимо.
+  // Примеры: 2000, 2 000, 2.000, 15.000, 2,5, 2500.50
+  const m=text.match(/\d[\d\s.,]*/);
+  if(!m)return null;
+
+  let s=m[0].trim().replace(/\s+/g,' ');
+  // Отрезаем висящие разделители в конце.
+  s=s.replace(/[.,]+$/,'');
+
+  let value=0;
+
+  // Точки/пробелы в группах по три считаем разделителями тысяч.
+  // 2.000 -> 2000; 15.000 -> 15000; 2 000 -> 2000; 1.200.000 -> 1200000
+  if(/^\d{1,3}(?:[ .]\d{3})+$/.test(s)){
+    value=Number(s.replace(/[ .]/g,''));
+  }
+  // Русский десятичный формат: 2500,50
+  else if(/^\d+(?:,\d{1,2})$/.test(s)){
+    value=Number(s.replace(',','.'));
+  }
+  // Обычное целое число.
+  else if(/^\d+$/.test(s)){
+    value=Number(s);
+  }
+  // На всякий случай: если внутри только цифры и разделители,
+  // сначала пробуем убрать точки/пробелы как разделители тысяч.
+  else {
+    const compact=s.replace(/[ .]/g,'');
+    if(/^\d+(?:,\d{1,2})?$/.test(compact)){
+      value=Number(compact.replace(',','.'));
+    }
+  }
+
+  if(!(value>0))return null;
+
+  const before=text.slice(0,m.index).trim();
+  const startToken=before?before.split(/\s+/).length:0;
+  const tokenCount=s.split(/\s+/).length;
+
+  return {value:value,startToken:startToken,tokenCount:tokenCount,raw:s};
+}
+
+function parseCommand(raw){
+  let text=raw
+    .toLowerCase()
+    .replace(/ё/g,'е')
+    .replace(/[^\p{L}\p{N},. ]/gu,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+
+  // Командные слова типа операции.
+  // ВАЖНО: "зарплата" НЕ удаляется как команда — это нормальная категория.
+  const incCmd=['поступление','доход','приход','получил','получила','зачисление'];
+  const expCmd=['трата','расход','потратил','потратила','заплатил','заплатила','купил','купила','оплата'];
+
+  let type=null;
+  if(incCmd.some(w=>text.includes(w)))type='income';
+  if(expCmd.some(w=>text.includes(w)))type='expense';
+
+  // Если человек не сказал явно "поступление", зарплату всё равно можно понять как доход.
+  if(!type && /\b(зарплата|аванс|премия)\b/.test(text))type='income';
+
+  if(!type)throw new Error('Скажи «трата» или «поступление»');
+
+  const tokens=text.split(' ');
+  let amount=0;
+  let used=[];
+
+  const numeric=parseNumericAmount(text);
+
+  if(numeric){
+    amount=numeric.value;
+
+    for(let i=0;i<numeric.tokenCount;i++){
+      used.push(numeric.startToken+i);
+    }
+
+    const afterIdx=numeric.startToken+numeric.tokenCount;
+    const next=(tokens[afterIdx]||'').replace(/\.$/,'');
+    const shortScales={'тыс':1000,'млн':1000000};
+
+    if(Object.prototype.hasOwnProperty.call(scales,next)){
+      amount*=scales[next];
+      used.push(afterIdx);
+    }else if(Object.prototype.hasOwnProperty.call(shortScales,next)){
+      amount*=shortScales[next];
+      used.push(afterIdx);
+    }
+  }else{
+    const n=wordNumber(tokens);
+    amount=n.value;
+    used=n.used;
+  }
+
+  if(!(amount>0))throw new Error('Не понял сумму');
+
+  // Убираем только служебные слова.
+  // Любые остальные слова становятся категорией.
+  const remove=new Set(incCmd.concat(expCmd,[
+    'рубль','рубля','рублей','руб','р',
+    'тыс','тыс.','тысяч','тысяча','тысячи',
+    'млн','млн.','миллион','миллиона','миллионов',
+    'категория','категории',
+    'на','за','это','и'
+  ]));
+
+  let cat=tokens
+    .filter((w,i)=>{
+      if(remove.has(w))return false;
+      if(used.includes(i))return false;
+      if(Object.prototype.hasOwnProperty.call(units,w))return false;
+      if(Object.prototype.hasOwnProperty.call(scales,w))return false;
+      if(/^\d[\d.,]*$/.test(w))return false;
+      return true;
+    })
+    .join(' ')
+    .trim();
+
+  if(!cat)cat='Без категории';
+
+  // Аккуратная нормализация нескольких частых вариантов.
+  const aliases={
+    'зп':'Зарплата',
+    'зарплата':'Зарплата',
+    'аванс':'Зарплата',
+    'бенз':'Бензин',
+    'бензин':'Бензин',
+    'топливо':'Бензин',
+    'продукты':'Продукты'
+  };
+
+  if(Object.prototype.hasOwnProperty.call(aliases,cat)){
+    cat=aliases[cat];
+  }else{
+    cat=cat.charAt(0).toUpperCase()+cat.slice(1);
+  }
+
+  return {type:type,amount:amount,category:cat,raw:raw};
+}
+
+$('#month').value=monthNow();$('#month').addEventListener('change',load);
+$('#cancelEdit').onclick=()=>{state.editing=null;$('#editModal').classList.remove('show')};
+$('#saveEdit').onclick=saveEditedOperation;
+$('#saveManual').onclick=()=>{const a=Number($('#amount').value.replace(',','.'));if(!(a>0))return toast('Введи сумму');save({type:$('#type').value,amount:a,category:($('#category').value||'Без категории').trim(),raw:'Ручной ввод'});$('#amount').value='';$('#category').value=''};
+$('#undo').onclick=async()=>{if(!state.lastId)return;try{const r=await api({action:'delete',id:state.lastId,month:$('#month').value});state.lastId=null;$('#undo').disabled=true;render(r.data);toast('Последняя запись удалена')}catch(e){toast(e.message)}};
+$('#csv').onclick=()=>{const rows=[['Дата','Тип','Сумма','Категория','Команда']];(state.data.operations||[]).forEach(o=>rows.push([o.date,o.type==='income'?'Доход':'Расход',o.amount,o.category,o.raw]));const csv='\uFEFF'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')).join('\n');const b=new Blob([csv],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='finance-'+$('#month').value+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)};
+
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+if(SR){
+  const rec=new SR();rec.lang='ru-RU';rec.interimResults=false;rec.maxAlternatives=1;
+  $('#mic').onclick=()=>{try{rec.start()}catch(e){}};
+  rec.onstart=()=>{$('#mic').classList.add('listening');$('#hint').textContent='Слушаю…'};
+  rec.onend=()=>$('#mic').classList.remove('listening');
+  rec.onerror=e=>{$('#mic').classList.remove('listening');$('#hint').textContent=e.error==='not-allowed'?'Разреши микрофон для этого сайта':'Ошибка микрофона: '+e.error};
+  rec.onresult=e=>{const raw=e.results[0][0].transcript;$('#hint').textContent='Услышал: '+raw;try{const op=parseCommand(raw);$('#type').value=op.type;$('#amount').value=op.amount;$('#category').value=op.category;save(op)}catch(err){$('#hint').textContent=err.message+' — «'+raw+'»';toast(err.message)}};
+}else{$('#mic').disabled=true;$('#hint').textContent='Открой приложение в Chrome: этот браузер не поддерживает голосовой ввод'}
+
+function openSettings(){const c=cfg();$('#apiInput').value=c.api;$('#keyInput').value=c.key;$('#settingsModal').classList.add('show')}
+$('#settingsBtn').onclick=openSettings;$('#closeSettings').onclick=()=>$('#settingsModal').classList.remove('show');
+$('#saveSettings').onclick=()=>{localStorage.setItem(KAPI,$('#apiInput').value.trim());localStorage.setItem(KKEY,$('#keyInput').value.trim());$('#settingsModal').classList.remove('show');toast('Настройки сохранены');load()};
+
+if(cfg().api&&cfg().key)load();else{openSettings();$('#hint').textContent='Нужно один раз настроить подключение'}
+</script>
+</body>
+</html>
