@@ -25,6 +25,7 @@ function setup() {
   getLiabilitySheet_();
   getGoalsSheet_();
   getRecurringSheet_();
+  ensureDailyTrigger_();
 
   Logger.log('Таблица: ' + ss.getUrl());
   return ss.getUrl();
@@ -725,4 +726,22 @@ function deleteById_(sh,id) {
   if (row<0) return {ok:false};
   sh.deleteRow(row);
   return {ok:true};
+}
+
+
+function ensureDailyTrigger_() {
+  const exists = ScriptApp.getProjectTriggers()
+    .some(t => t.getHandlerFunction() === 'dailyMaintenance');
+  if (!exists) {
+    ScriptApp.newTrigger('dailyMaintenance')
+      .timeBased()
+      .everyDays(1)
+      .atHour(6)
+      .create();
+  }
+}
+
+function dailyMaintenance() {
+  applyRecurringForCurrentMonth_();
+  saveCapitalSnapshot_();
 }
