@@ -66,6 +66,11 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 .assetEditor{display:grid;grid-template-columns:1fr 1fr;gap:9px}
 .assetEditor input,.assetEditor select{width:100%;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:13px;padding:13px 14px;font-size:16px}
 .assetEditor .wide{grid-column:1/-1}
+.assetDateField{display:flex;flex-direction:column;gap:6px}
+.assetDateField span{color:var(--muted);font-size:12px}
+.assetMaturity{font-size:12px;margin-top:5px;color:#b7c6e6}
+.assetMaturity.expired{color:var(--bad)}
+.assetMaturity.soon{color:#ffc857}
 .addAssetBtn{width:100%;margin:10px 0 16px;background:var(--accent);color:white;border:0;border-radius:14px;padding:13px 14px;font-weight:800;font-size:15px;cursor:pointer}
 @media(max-width:480px){.capitalStats{grid-template-columns:1fr 1fr}.capitalControls{grid-template-columns:1fr}.asset{align-items:flex-start}}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#272d39;color:#fff;padding:11px 15px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;max-width:90%;text-align:center;z-index:20}#toast.show{opacity:1}
@@ -90,7 +95,7 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 <button id="analyticsBtn" class="analyticsBtn">📊 Аналитика месяца</button>
 <div class="voice">
 <button id="mic" aria-label="Голосовой ввод">🎙️</button>
-<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v1.8</div>
+<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v1.9</div>
 <div class="example">Например: «трата две тысячи продукты»<br>или «поступление 50 тысяч зарплата»</div>
 </div>
 <div class="manual">
@@ -178,6 +183,7 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 <option>Фонд ликвидности</option>
 <option>Акции</option>
 <option>Облигации</option>
+<option>ЦФА</option>
 <option>Криптовалюта</option>
 <option>Наличные</option>
 <option>Недвижимость</option>
@@ -188,6 +194,10 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 <input id="assetName" class="wide" placeholder="Название, например «Вклад Альфа»">
 <input id="assetRate" inputmode="decimal" placeholder="Доходность, % годовых">
 <input id="assetNote" placeholder="Комментарий">
+<div class="assetDateField wide">
+  <span>Дата погашения / окончания — необязательно</span>
+  <input id="assetMaturity" type="date">
+</div>
 </div>
 <div class="buttons">
 <button class="action" id="cancelAsset">Отмена</button>
@@ -227,7 +237,7 @@ function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('show');se
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 
 function canonicalForSign(p){
-  const order=['action','id','date','type','amount','category','raw','month','sourceType','name','rate','note','monthlyContribution','ts','nonce'];
+  const order=['action','id','date','type','amount','category','raw','month','sourceType','name','rate','note','maturityDate','monthlyContribution','ts','nonce'];
   return order
     .filter(k=>p[k]!==undefined&&p[k]!==null)
     .map(k=>k+'='+encodeURIComponent(String(p[k])))
@@ -412,6 +422,23 @@ async function loadCapital(){
   }
 }
 
+function maturityInfo(dateStr){
+  if(!dateStr)return null;
+  const m=String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m)return null;
+
+  const target=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]));
+  const now=new Date();
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const days=Math.ceil((target-today)/86400000);
+  const label=target.toLocaleDateString('ru-RU');
+
+  if(days<0)return {text:'Погашение: '+label+' · срок истёк '+Math.abs(days)+' дн. назад',className:'expired'};
+  if(days===0)return {text:'Погашение: '+label+' · сегодня',className:'soon'};
+  if(days<=30)return {text:'Погашение: '+label+' · осталось '+days+' дн.',className:'soon'};
+  return {text:'Погашение: '+label+' · осталось '+days+' дн.',className:''};
+}
+
 function renderCapital(data){
   state.capital=data||state.capital;
   $('#capitalTotal').textContent=rub(state.capital.total);
@@ -434,12 +461,14 @@ function renderCapital(data){
         const el=document.createElement('div');
         el.className='asset';
         const monthly=(Number(source.amount)||0)*(Number(source.rate)||0)/100/12;
+        const maturity=maturityInfo(source.maturityDate);
 
         el.innerHTML=
           '<div style="min-width:0;flex:1">'+
             '<div class="assetName">'+esc(source.name)+'</div>'+
             '<div class="assetMeta">'+esc(source.sourceType)+(source.note?' · '+esc(source.note):'')+'</div>'+
             '<div class="assetMeta">'+Number(source.rate||0).toLocaleString('ru-RU',{maximumFractionDigits:2})+'% годовых</div>'+
+            (maturity?'<div class="assetMaturity '+maturity.className+'">'+esc(maturity.text)+'</div>':'')+
           '</div>'+
           '<div class="opRight">'+
             '<div class="assetAmount">'+rub(source.amount)+'</div>'+
@@ -467,6 +496,7 @@ function openAssetModal(source){
   $('#assetAmount').value=source?source.amount:'';
   $('#assetRate').value=source?source.rate:'';
   $('#assetNote').value=source?source.note:'';
+  $('#assetMaturity').value=source?(source.maturityDate||''):'';
   $('#assetModal').classList.add('show');
 }
 
@@ -487,7 +517,8 @@ async function saveAsset(){
     name:name,
     amount:amount,
     rate:rate,
-    note:$('#assetNote').value.trim()
+    note:$('#assetNote').value.trim(),
+    maturityDate:$('#assetMaturity').value||''
   };
 
   $('#saveAsset').disabled=true;
