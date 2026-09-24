@@ -205,12 +205,18 @@ function parseCommand(raw){
     .replace(/\s+/g,' ')
     .trim();
 
-  const inc=['поступление','доход','приход','получил','получила','зарплата','зачисление'];
-  const exp=['трата','расход','потратил','потратила','заплатил','заплатила','купил','купила','оплата'];
+  // Командные слова типа операции.
+  // ВАЖНО: "зарплата" НЕ удаляется как команда — это нормальная категория.
+  const incCmd=['поступление','доход','приход','получил','получила','зачисление'];
+  const expCmd=['трата','расход','потратил','потратила','заплатил','заплатила','купил','купила','оплата'];
 
   let type=null;
-  if(inc.some(w=>text.includes(w)))type='income';
-  if(exp.some(w=>text.includes(w)))type='expense';
+  if(incCmd.some(w=>text.includes(w)))type='income';
+  if(expCmd.some(w=>text.includes(w)))type='expense';
+
+  // Если человек не сказал явно "поступление", зарплату всё равно можно понять как доход.
+  if(!type && /\b(зарплата|аванс|премия)\b/.test(text))type='income';
+
   if(!type)throw new Error('Скажи «трата» или «поступление»');
 
   const tokens=text.split(' ');
@@ -222,12 +228,10 @@ function parseCommand(raw){
   if(numeric){
     amount=numeric.value;
 
-    // Помечаем токены с цифровой суммой как использованные.
     for(let i=0;i<numeric.tokenCount;i++){
       used.push(numeric.startToken+i);
     }
 
-    // Поддержка: «2 тысячи», «5 млн», «3 миллиона».
     const afterIdx=numeric.startToken+numeric.tokenCount;
     const next=(tokens[afterIdx]||'').replace(/\.$/,'');
     const shortScales={'тыс':1000,'млн':1000000};
@@ -247,10 +251,13 @@ function parseCommand(raw){
 
   if(!(amount>0))throw new Error('Не понял сумму');
 
-  const remove=new Set(inc.concat(exp,[
+  // Убираем только служебные слова.
+  // Любые остальные слова становятся категорией.
+  const remove=new Set(incCmd.concat(expCmd,[
     'рубль','рубля','рублей','руб','р',
     'тыс','тыс.','тысяч','тысяча','тысячи',
     'млн','млн.','миллион','миллиона','миллионов',
+    'категория','категории',
     'на','за','это','и'
   ]));
 
@@ -267,7 +274,23 @@ function parseCommand(raw){
     .trim();
 
   if(!cat)cat='Без категории';
-  cat=cat.charAt(0).toUpperCase()+cat.slice(1);
+
+  // Аккуратная нормализация нескольких частых вариантов.
+  const aliases={
+    'зп':'Зарплата',
+    'зарплата':'Зарплата',
+    'аванс':'Зарплата',
+    'бенз':'Бензин',
+    'бензин':'Бензин',
+    'топливо':'Бензин',
+    'продукты':'Продукты'
+  };
+
+  if(Object.prototype.hasOwnProperty.call(aliases,cat)){
+    cat=aliases[cat];
+  }else{
+    cat=cat.charAt(0).toUpperCase()+cat.slice(1);
+  }
 
   return {type:type,amount:amount,category:cat,raw:raw};
 }
