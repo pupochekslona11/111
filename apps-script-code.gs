@@ -465,6 +465,16 @@ function addCapitalFlow_(flow) {
   const amount=Number(flow.amount);
   if (!Number.isFinite(amount)||amount===0) throw new Error('Сумма пополнения/вывода не может быть 0.');
 
+  const sh=getCapitalFlowSheet_();
+  const id=String(flow.id||Utilities.getUuid());
+
+  // Идемпотентность: повторная отправка одной и той же офлайн-операции
+  // не должна второй раз менять капитал.
+  if (sh.getLastRow()>1) {
+    const ids=sh.getRange(2,1,sh.getLastRow()-1,1).getDisplayValues().flat();
+    if (ids.includes(id)) return {ok:true,duplicate:true,id:id};
+  }
+
   const sources=getCapitalSources_();
   const source=sources.find(s=>s.id===flow.sourceId);
   if (!source) throw new Error('Источник капитала не найден.');
@@ -473,13 +483,13 @@ function addCapitalFlow_(flow) {
   source.amount+=amount;
   upsertCapitalSource_(source);
 
-  const sh=getCapitalFlowSheet_();
   const date=flow.date?new Date(flow.date+'T12:00:00'):new Date();
   sh.appendRow([
-    flow.id||Utilities.getUuid(),date,flow.sourceId,amount,
+    id,date,flow.sourceId,amount,
     String(flow.note||'').slice(0,300),new Date()
   ]);
   saveCapitalSnapshot_();
+  return {ok:true,id:id};
 }
 
 function capitalTotal_() {
