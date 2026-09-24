@@ -635,6 +635,7 @@ async function deleteOne(o){
     }
     render(r.data);
     await cacheWrite(cacheKey('dashboard',$('#month').value),r.data);
+    await cacheDrop(cacheKey('stats_dashboard'));
     toast('Операция удалена');
   }catch(e){
     toast('Ошибка удаления: '+e.message);
@@ -682,6 +683,7 @@ async function saveEditedOperation(){
     $('#editModal').classList.remove('show');
     render(r.data);
     await cacheWrite(cacheKey('dashboard',$('#month').value),r.data);
+    await cacheDrop(cacheKey('stats_dashboard'));
     toast('Операция изменена');
   }catch(e){
     toast('Ошибка редактирования: '+e.message);
@@ -849,7 +851,7 @@ async function saveAsset(){
     state.capitalEditing=null;
     $('#assetModal').classList.remove('show');
     renderCapital(r.data);
-    await loadCapital();
+    await loadCapital(true);
     toast(old?'Источник обновлён':'Источник добавлен');
   }catch(e){toast(e.message)}
   finally{$('#saveAsset').disabled=false}
@@ -860,7 +862,7 @@ async function deleteAsset(source){
   try{
     const r=await api({action:'capital_delete',id:source.id});
     renderCapital(r.data);
-    await loadCapital();
+    await loadCapital(true);
     toast('Источник удалён');
   }catch(e){toast(e.message)}
 }
@@ -896,7 +898,7 @@ async function saveCapitalFlow(){
     });
     $('#capitalFlowModal').classList.remove('show');
     renderCapital(r.data);
-    await loadCapital();
+    await loadCapital(true);
     toast(amount>0?'Пополнение учтено':'Вывод учтён');
   }catch(e){toast(e.message)}
 }
@@ -1000,7 +1002,7 @@ async function saveLiability(){
     });
     state.liabilities=r.data||[];state.liabilityEditing=null;
     $('#liabilityModal').classList.remove('show');
-    renderLiabilities();await loadCapital();toast('Обязательство сохранено');
+    renderLiabilities();await loadCapital(true);toast('Обязательство сохранено');
   }catch(e){toast(e.message)}
 }
 
@@ -1008,7 +1010,7 @@ async function deleteLiability(x){
   if(!confirm('Удалить обязательство «'+x.name+'»?'))return;
   try{
     const r=await api({action:'liability_delete',id:x.id});
-    state.liabilities=r.data||[];renderLiabilities();await loadCapital();toast('Удалено');
+    state.liabilities=r.data||[];renderLiabilities();await loadCapital(true);toast('Удалено');
   }catch(e){toast(e.message)}
 }
 
@@ -1069,13 +1071,13 @@ async function saveGoal(){
       targetAmount:target,targetDate:$('#goalDate').value||'',note:$('#goalNote').value.trim()
     });
     state.goals=r.data||[];state.goalEditing=null;$('#goalModal').classList.remove('show');
-    renderGoals();toast('Цель сохранена');
+    await cacheDrop(cacheKey('capital_bundle'));renderGoals();toast('Цель сохранена');
   }catch(e){toast(e.message)}
 }
 
 async function deleteGoal(g){
   if(!confirm('Удалить цель «'+g.name+'»?'))return;
-  try{const r=await api({action:'goal_delete',id:g.id});state.goals=r.data||[];renderGoals();toast('Цель удалена')}catch(e){toast(e.message)}
+  try{const r=await api({action:'goal_delete',id:g.id});state.goals=r.data||[];await cacheDrop(cacheKey('capital_bundle'));renderGoals();toast('Цель удалена')}catch(e){toast(e.message)}
 }
 
 function renderMoneyCalendar(root,events){
@@ -1141,13 +1143,13 @@ async function saveRecurring(){
       category:($('#recurringCategory').value||'Без категории').trim(),
       dayOfMonth:Math.floor(day),enabled:$('#recurringEnabled').value
     });
-    state.recurring=r.data||[];clearRecurringForm();renderRecurring();toast('Регулярная операция сохранена');
+    state.recurring=r.data||[];await cacheDrop(cacheKey('stats_dashboard'));clearRecurringForm();renderRecurring();toast('Регулярная операция сохранена');
   }catch(e){toast(e.message)}
 }
 
 async function deleteRecurring(x){
   if(!confirm('Удалить «'+x.name+'»?'))return;
-  try{const r=await api({action:'recurring_delete',id:x.id});state.recurring=r.data||[];renderRecurring();toast('Удалено')}catch(e){toast(e.message)}
+  try{const r=await api({action:'recurring_delete',id:x.id});state.recurring=r.data||[];await cacheDrop(cacheKey('stats_dashboard'));renderRecurring();toast('Удалено')}catch(e){toast(e.message)}
 }
 
 async function loadStats(force){
@@ -1364,6 +1366,7 @@ async function save(op){
     state.lastId=id;$('#undo').disabled=false;
     render(r.data);
     await cacheWrite(cacheKey('dashboard',$('#month').value),r.data);
+    await cacheDrop(cacheKey('stats_dashboard'));
     $('#hint').textContent=(op.type==='expense'?'Расход ':'Доход ')+rub(op.amount)+' — '+(op.category||'Без категории');
     toast('Записано');
   }catch(e){$('#hint').textContent='Ошибка: '+e.message;toast(e.message)}
@@ -1555,7 +1558,7 @@ $('#closeAnalytics').onclick=()=>$('#analyticsModal').classList.remove('show');
 $('#cancelEdit').onclick=()=>{state.editing=null;$('#editModal').classList.remove('show')};
 $('#saveEdit').onclick=saveEditedOperation;
 $('#saveManual').onclick=()=>{const a=Number($('#amount').value.replace(',','.'));if(!(a>0))return toast('Введи сумму');save({type:$('#type').value,amount:a,category:($('#category').value||'Без категории').trim(),raw:'Ручной ввод'});$('#amount').value='';$('#category').value=''};
-$('#undo').onclick=async()=>{if(!state.lastId)return;try{const r=await api({action:'delete',id:state.lastId,month:$('#month').value});state.lastId=null;$('#undo').disabled=true;render(r.data);await cacheWrite(cacheKey('dashboard',$('#month').value),r.data);toast('Последняя запись удалена')}catch(e){toast(e.message)}};
+$('#undo').onclick=async()=>{if(!state.lastId)return;try{const r=await api({action:'delete',id:state.lastId,month:$('#month').value});state.lastId=null;$('#undo').disabled=true;render(r.data);await cacheWrite(cacheKey('dashboard',$('#month').value),r.data);await cacheDrop(cacheKey('stats_dashboard'));toast('Последняя запись удалена')}catch(e){toast(e.message)}};
 $('#csv').onclick=()=>{const rows=[['Дата','Тип','Сумма','Категория','Команда']];(state.data.operations||[]).forEach(o=>rows.push([o.date,o.type==='income'?'Доход':'Расход',o.amount,o.category,o.raw]));const csv='\uFEFF'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')).join('\n');const b=new Blob([csv],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='finance-'+$('#month').value+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)};
 
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
