@@ -11,6 +11,9 @@
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:680px;margin:auto;padding:18px 16px 42px}header{display:flex;align-items:center;justify-content:space-between;gap:10px}
 h1{font-size:26px;margin:2px 0 16px}.gear{border:0;background:transparent;color:var(--muted);font-size:23px;padding:6px;cursor:pointer}
+.syncBar{display:flex;justify-content:flex-end;margin:-9px 0 10px}
+.syncStatus{border:0;background:transparent;color:var(--muted);font-size:11px;padding:4px 2px;cursor:pointer}
+.syncStatus.ok{color:var(--good)}.syncStatus.busy{color:#b7c6e6}.syncStatus.warn{color:#ffc857}.syncStatus.bad{color:var(--bad)}
 .month{width:100%;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:16px;padding:14px 16px;font-size:16px}
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin:12px 0}.stat{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px}.stat small{color:var(--muted)}.stat b{display:block;font-size:22px;margin-top:6px}.balance{grid-column:1/-1}.good{color:var(--good)}.bad{color:var(--bad)}
 .voice{display:flex;flex-direction:column;align-items:center;margin:28px 0 18px}#mic{width:112px;height:112px;border-radius:50%;border:0;background:var(--accent);font-size:48px;box-shadow:0 10px 30px #0008;cursor:pointer;transition:.15s}#mic:active{transform:scale(.97)}#mic.listening{transform:scale(1.05);box-shadow:0 0 0 12px #78a2ff22,0 10px 30px #0008}
@@ -104,6 +107,7 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 <body>
 <div class="wrap">
 <header><h1>💰 Мои финансы</h1><button class="gear" id="settingsBtn" aria-label="Настройки">⚙️</button></header>
+<div class="syncBar"><button id="syncStatus" class="syncStatus" title="Нажми, чтобы обновить данные">Локальные данные</button></div>
 <div class="tabs">
   <button id="operationsTab" class="tabBtn active">💳 Операции</button>
   <button id="capitalTab" class="tabBtn">💼 Капитал</button>
@@ -122,7 +126,7 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 </div>
 <div class="voice">
 <button id="mic" aria-label="Голосовой ввод">🎙️</button>
-<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v2.1</div>
+<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v2.2</div>
 <div class="example">Например: «трата две тысячи продукты»<br>или «поступление 50 тысяч зарплата»</div>
 </div>
 <div class="manual">
@@ -371,7 +375,7 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 
 <script>
 const $=s=>document.querySelector(s);
-const state={data:{income:0,expense:0,balance:0,operations:[]},lastId:null,editing:null,capital:{sources:[],history:[],flows:[],total:0,expectedAnnualIncome:0,expectedMonthlyIncome:0,monthlyContribution:0,liabilitiesTotal:0,netWorth:0,performance:{}},capitalEditing:null,liabilities:[],liabilityEditing:null,goals:[],goalEditing:null,recurring:[],recurringEditing:null,stats:null};
+const state={data:{income:0,expense:0,balance:0,operations:[]},lastId:null,editing:null,capital:{sources:[],history:[],flows:[],total:0,expectedAnnualIncome:0,expectedMonthlyIncome:0,monthlyContribution:0,liabilitiesTotal:0,netWorth:0,performance:{}},capitalEditing:null,liabilities:[],liabilityEditing:null,goals:[],goalEditing:null,recurring:[],recurringEditing:null,stats:null,currentPage:'operations'};
 const KAPI='vf_api', KKEY='vf_key';
 
 
@@ -382,6 +386,129 @@ function dateNow(){const d=new Date();return d.getFullYear()+'-'+String(d.getMon
 function uid(){return crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(16).slice(2)}
 function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2400)}
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+
+const CACHE_TTL=5*60*1000;
+const DB_NAME='voice_finance_local_v1';
+const DB_VERSION=1;
+const MUTATION_ACTIONS=new Set([
+  'add','delete','capital_add','capital_update','capital_delete','capital_settings','capital_flow_add',
+  'liability_add','liability_update','liability_delete','goal_add','goal_update','goal_delete',
+  'recurring_add','recurring_update','recurring_delete'
+]);
+
+function openLocalDb(){
+  return new Promise((resolve,reject)=>{
+    if(!('indexedDB' in window))return reject(new Error('IndexedDB недоступен'));
+    const req=indexedDB.open(DB_NAME,DB_VERSION);
+    req.onupgradeneeded=()=>{
+      const db=req.result;
+      if(!db.objectStoreNames.contains('cache'))db.createObjectStore('cache',{keyPath:'key'});
+      if(!db.objectStoreNames.contains('queue'))db.createObjectStore('queue',{keyPath:'qid'});
+    };
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error||new Error('Ошибка локальной базы'));
+  });
+}
+
+async function idbGet(store,key){
+  try{
+    const db=await openLocalDb();
+    return await new Promise((resolve,reject)=>{
+      const tx=db.transaction(store,'readonly');
+      const req=tx.objectStore(store).get(key);
+      req.onsuccess=()=>resolve(req.result||null);
+      req.onerror=()=>reject(req.error);
+    });
+  }catch(e){return null}
+}
+
+async function idbPut(store,value){
+  try{
+    const db=await openLocalDb();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(store,'readwrite');
+      tx.objectStore(store).put(value);
+      tx.oncomplete=()=>resolve();
+      tx.onerror=()=>reject(tx.error);
+    });
+    return true;
+  }catch(e){return false}
+}
+
+async function idbDelete(store,key){
+  try{
+    const db=await openLocalDb();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(store,'readwrite');
+      tx.objectStore(store).delete(key);
+      tx.oncomplete=()=>resolve();
+      tx.onerror=()=>reject(tx.error);
+    });
+  }catch(e){}
+}
+
+async function idbAll(store){
+  try{
+    const db=await openLocalDb();
+    return await new Promise((resolve,reject)=>{
+      const tx=db.transaction(store,'readonly');
+      const req=tx.objectStore(store).getAll();
+      req.onsuccess=()=>resolve(req.result||[]);
+      req.onerror=()=>reject(req.error);
+    });
+  }catch(e){return []}
+}
+
+function cacheKey(action,extra){
+  return action+(extra?':'+extra:'');
+}
+async function cacheRead(key){return await idbGet('cache',key)}
+async function cacheWrite(key,data){return await idbPut('cache',{key:key,data:data,updatedAt:Date.now()})}
+async function cacheDrop(key){return await idbDelete('cache',key)}
+function cacheFresh(entry){return !!entry && Date.now()-Number(entry.updatedAt||0)<CACHE_TTL}
+
+function setSyncStatus(textValue,kind){
+  const el=$('#syncStatus');
+  if(!el)return;
+  el.textContent=textValue;
+  el.className='syncStatus '+(kind||'');
+}
+
+async function queueMutation(params){
+  const qid=uid();
+  await idbPut('queue',{qid:qid,params:params,createdAt:Date.now()});
+  await updateQueueBadge();
+  return qid;
+}
+
+async function updateQueueBadge(){
+  const q=await idbAll('queue');
+  if(q.length){
+    setSyncStatus('⚠ '+q.length+' ждёт отправки','warn');
+    return q.length;
+  }
+  return 0;
+}
+
+async function flushQueue(){
+  if(!navigator.onLine)return;
+  const items=(await idbAll('queue')).sort((a,b)=>a.createdAt-b.createdAt);
+  if(!items.length)return;
+  setSyncStatus('⟳ Отправляю '+items.length+'…','busy');
+
+  for(const item of items){
+    try{
+      await apiNetwork(item.params);
+      await idbDelete('queue',item.qid);
+    }catch(e){
+      setSyncStatus('⚠ Синхронизация позже','warn');
+      await updateQueueBadge();
+      return;
+    }
+  }
+  setSyncStatus('✓ Синхронизировано','ok');
+  await forceRefreshActive();
+}
 
 function canonicalForSign(p){
   const order=['action','id','date','type','amount','category','raw','month','sourceType','sourceId','name','rate','note','maturityDate','liquidity','liabilityType','balance','dueDate','graceEnd','minPayment','targetAmount','targetDate','dayOfMonth','enabled','monthlyContribution','flowAmount','flowNote','ts','nonce'];
@@ -404,7 +531,7 @@ async function hmacHex(secret,message){
   return Array.from(new Uint8Array(sig)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
-async function api(params){
+async function apiNetwork(params){
   const c=cfg();
   if(!c.api||!c.key){
     openSettings();
@@ -440,6 +567,16 @@ async function api(params){
     s.onerror=()=>done(new Error('Не удалось подключиться к Apps Script'));
     document.head.appendChild(s);
   });
+}
+
+async function api(params){
+  if(MUTATION_ACTIONS.has(params.action) && !navigator.onLine){
+    await queueMutation(params);
+    const err=new Error('Нет интернета — изменение сохранено в очередь');
+    err.queued=true;
+    throw err;
+  }
+  return await apiNetwork(params);
 }
 
 function render(data){
@@ -497,6 +634,7 @@ async function deleteOne(o){
       $('#undo').disabled=true;
     }
     render(r.data);
+    await cacheWrite(cacheKey('dashboard',$('#month').value),r.data);
     toast('Операция удалена');
   }catch(e){
     toast('Ошибка удаления: '+e.message);
@@ -543,6 +681,7 @@ async function saveEditedOperation(){
     $('#undo').disabled=false;
     $('#editModal').classList.remove('show');
     render(r.data);
+    await cacheWrite(cacheKey('dashboard',$('#month').value),r.data);
     toast('Операция изменена');
   }catch(e){
     toast('Ошибка редактирования: '+e.message);
@@ -552,6 +691,7 @@ async function saveEditedOperation(){
 }
 
 function switchPage(page){
+  state.currentPage=page;
   const isOps=page==='operations';
   const isCapital=page==='capital';
   const isStats=page==='stats';
@@ -568,18 +708,41 @@ function switchPage(page){
   if(isStats)loadStats();
 }
 
-async function loadCapital(){
+function applyCapitalBundle(d){
+  d=d||{};
+  state.liabilities=d.liabilities||[];
+  state.goals=d.goals||[];
+  renderCapital(d.capital||{});
+  renderLiabilities();
+  renderGoals();
+  renderMoneyCalendar($('#moneyCalendar'),d.calendar||[]);
+}
+
+async function loadCapital(force){
+  const key=cacheKey('capital_bundle');
+  const cached=await cacheRead(key);
+
+  if(cached&&cached.data){
+    applyCapitalBundle(cached.data);
+    setSyncStatus(cacheFresh(cached)?'✓ Сохранено на телефоне':'Локальные данные · обновляю','ok');
+    if(cacheFresh(cached)&&!force)return;
+  }
+
+  if(!navigator.onLine){
+    setSyncStatus('Офлайн','warn');
+    if(!cached)toast('Нет интернета и локального кэша капитала пока нет');
+    return;
+  }
+
   try{
-    const r=await api({action:'capital_bundle'});
-    const d=r.data||{};
-    state.liabilities=d.liabilities||[];
-    state.goals=d.goals||[];
-    renderCapital(d.capital||{});
-    renderLiabilities();
-    renderGoals();
-    renderMoneyCalendar($('#moneyCalendar'),d.calendar||[]);
+    setSyncStatus('⟳ Синхронизация…','busy');
+    const r=await apiNetwork({action:'capital_bundle'});
+    applyCapitalBundle(r.data);
+    await cacheWrite(key,r.data);
+    setSyncStatus('✓ Синхронизировано','ok');
   }catch(e){
-    toast('Капитал: '+e.message);
+    setSyncStatus(cached?'⚠ Показаны локальные данные':'Ошибка синхронизации',cached?'warn':'bad');
+    if(!cached)toast('Капитал: '+e.message);
   }
 }
 
@@ -987,11 +1150,32 @@ async function deleteRecurring(x){
   try{const r=await api({action:'recurring_delete',id:x.id});state.recurring=r.data||[];renderRecurring();toast('Удалено')}catch(e){toast(e.message)}
 }
 
-async function loadStats(){
+async function loadStats(force){
+  const key=cacheKey('stats_dashboard');
+  const cached=await cacheRead(key);
+
+  if(cached&&cached.data){
+    state.stats=cached.data;renderStats(cached.data);
+    setSyncStatus(cacheFresh(cached)?'✓ Сохранено на телефоне':'Локальные данные · обновляю','ok');
+    if(cacheFresh(cached)&&!force)return;
+  }
+
+  if(!navigator.onLine){
+    setSyncStatus('Офлайн','warn');
+    if(!cached)toast('Нет интернета и локальной статистики пока нет');
+    return;
+  }
+
   try{
-    const r=await api({action:'stats_dashboard'});
+    setSyncStatus('⟳ Синхронизация…','busy');
+    const r=await apiNetwork({action:'stats_dashboard'});
     state.stats=r.data;renderStats(r.data);
-  }catch(e){toast('Статистика: '+e.message)}
+    await cacheWrite(key,r.data);
+    setSyncStatus('✓ Синхронизировано','ok');
+  }catch(e){
+    setSyncStatus(cached?'⚠ Показаны локальные данные':'Ошибка синхронизации',cached?'warn':'bad');
+    if(!cached)toast('Статистика: '+e.message);
+  }
 }
 
 function renderStats(d){
@@ -1042,6 +1226,13 @@ function renderTopExpenseBars(rows){
     el.innerHTML='<div>'+esc(x.name)+'</div><div class="barTrack"><div class="barFill" style="width:'+(x.value/max*100)+'%"></div></div><div>'+rub(x.value)+'</div>';
     root.appendChild(el);
   });
+}
+
+async function forceRefreshActive(){
+  if(!cfg().api||!cfg().key)return;
+  if(state.currentPage==='capital')return await loadCapital(true);
+  if(state.currentPage==='stats')return await loadStats(true);
+  return await load(true);
 }
 
 function groupByCategory(type){
@@ -1133,14 +1324,35 @@ function openAnalytics(){
   $('#analyticsModal').classList.add('show');
 }
 
-async function load(){
-  try{
-    $('#hint').textContent='Обновляю данные…';
-    const r=await api({action:'dashboard',month:$('#month').value});
-    render(r.data);
+async function load(force){
+  const month=$('#month').value;
+  const key=cacheKey('dashboard',month);
+  const cached=await cacheRead(key);
+
+  if(cached&&cached.data){
+    render(cached.data);
     $('#hint').textContent='Нажми и скажи операцию';
+    setSyncStatus(cacheFresh(cached)?'✓ Сохранено на телефоне':'Локальные данные · обновляю','ok');
+    if(cacheFresh(cached)&&!force)return;
+  }
+
+  if(!navigator.onLine){
+    if(!cached)$('#hint').textContent='Нет интернета и локальных данных пока нет';
+    setSyncStatus('Офлайн','warn');
+    return;
+  }
+
+  try{
+    setSyncStatus('⟳ Синхронизация…','busy');
+    if(!cached)$('#hint').textContent='Обновляю данные…';
+    const r=await apiNetwork({action:'dashboard',month:month});
+    render(r.data);
+    await cacheWrite(key,r.data);
+    $('#hint').textContent='Нажми и скажи операцию';
+    setSyncStatus('✓ Синхронизировано','ok');
   }catch(e){
-    $('#hint').textContent=e.message;
+    if(!cached)$('#hint').textContent=e.message;
+    setSyncStatus(cached?'⚠ Показаны локальные данные':'Ошибка синхронизации',cached?'warn':'bad');
   }
 }
 
@@ -1151,6 +1363,7 @@ async function save(op){
     const r=await api({action:'add',id:id,date:dateNow(),type:op.type,amount:op.amount,category:op.category||'Без категории',raw:op.raw||'',month:$('#month').value});
     state.lastId=id;$('#undo').disabled=false;
     render(r.data);
+    await cacheWrite(cacheKey('dashboard',$('#month').value),r.data);
     $('#hint').textContent=(op.type==='expense'?'Расход ':'Доход ')+rub(op.amount)+' — '+(op.category||'Без категории');
     toast('Записано');
   }catch(e){$('#hint').textContent='Ошибка: '+e.message;toast(e.message)}
@@ -1308,7 +1521,10 @@ function parseCommand(raw){
   return {type:type,amount:amount,category:cat,raw:raw};
 }
 
-$('#month').value=monthNow();$('#month').addEventListener('change',load);
+$('#month').value=monthNow();$('#month').addEventListener('change',()=>load(false));
+$('#syncStatus').onclick=forceRefreshActive;
+window.addEventListener('online',()=>{setSyncStatus('⟳ Интернет появился…','busy');flushQueue().then(()=>forceRefreshActive())});
+window.addEventListener('offline',()=>setSyncStatus('Офлайн','warn'));
 $('#operationsTab').onclick=()=>switchPage('operations');
 $('#capitalTab').onclick=()=>switchPage('capital');
 $('#statsTab').onclick=()=>switchPage('stats');
@@ -1339,7 +1555,7 @@ $('#closeAnalytics').onclick=()=>$('#analyticsModal').classList.remove('show');
 $('#cancelEdit').onclick=()=>{state.editing=null;$('#editModal').classList.remove('show')};
 $('#saveEdit').onclick=saveEditedOperation;
 $('#saveManual').onclick=()=>{const a=Number($('#amount').value.replace(',','.'));if(!(a>0))return toast('Введи сумму');save({type:$('#type').value,amount:a,category:($('#category').value||'Без категории').trim(),raw:'Ручной ввод'});$('#amount').value='';$('#category').value=''};
-$('#undo').onclick=async()=>{if(!state.lastId)return;try{const r=await api({action:'delete',id:state.lastId,month:$('#month').value});state.lastId=null;$('#undo').disabled=true;render(r.data);toast('Последняя запись удалена')}catch(e){toast(e.message)}};
+$('#undo').onclick=async()=>{if(!state.lastId)return;try{const r=await api({action:'delete',id:state.lastId,month:$('#month').value});state.lastId=null;$('#undo').disabled=true;render(r.data);await cacheWrite(cacheKey('dashboard',$('#month').value),r.data);toast('Последняя запись удалена')}catch(e){toast(e.message)}};
 $('#csv').onclick=()=>{const rows=[['Дата','Тип','Сумма','Категория','Команда']];(state.data.operations||[]).forEach(o=>rows.push([o.date,o.type==='income'?'Доход':'Расход',o.amount,o.category,o.raw]));const csv='\uFEFF'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')).join('\n');const b=new Blob([csv],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='finance-'+$('#month').value+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)};
 
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -1354,9 +1570,12 @@ if(SR){
 
 function openSettings(){const c=cfg();$('#apiInput').value=c.api;$('#keyInput').value=c.key;$('#settingsModal').classList.add('show')}
 $('#settingsBtn').onclick=openSettings;$('#closeSettings').onclick=()=>$('#settingsModal').classList.remove('show');
-$('#saveSettings').onclick=()=>{localStorage.setItem(KAPI,$('#apiInput').value.trim());localStorage.setItem(KKEY,$('#keyInput').value.trim());$('#settingsModal').classList.remove('show');toast('Настройки сохранены');load()};
+$('#saveSettings').onclick=async()=>{localStorage.setItem(KAPI,$('#apiInput').value.trim());localStorage.setItem(KKEY,$('#keyInput').value.trim());$('#settingsModal').classList.remove('show');await cacheDrop(cacheKey('dashboard',$('#month').value));await cacheDrop(cacheKey('capital_bundle'));await cacheDrop(cacheKey('stats_dashboard'));toast('Настройки сохранены');load(true)};
 
-if(cfg().api&&cfg().key)load();else{openSettings();$('#hint').textContent='Нужно один раз настроить подключение'}
+if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{})}
+updateQueueBadge();
+if(navigator.onLine)flushQueue();
+if(cfg().api&&cfg().key)load(false);else{openSettings();$('#hint').textContent='Нужно один раз настроить подключение'}
 </script>
 </body>
 </html>
