@@ -41,7 +41,30 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 .legendValue{color:var(--muted);white-space:nowrap}
 .analyticsEmpty{color:var(--muted);font-size:13px;padding:20px 0;text-align:center}
 @media(max-width:560px){.analyticsWrap{grid-template-columns:1fr}.donut{width:120px;height:120px}.donut:after{inset:23px}.donutCenter{padding:31px}}
-.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 14px}
+.tabs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:0 0 14px}
+.miniGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;margin:12px 0}
+.panel h3{margin:0 0 10px;font-size:18px}
+.panelHead{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.smallBtn{border:1px solid var(--line);background:var(--card2);color:var(--text);border-radius:11px;padding:8px 10px;font-weight:700;cursor:pointer}
+.formGrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.formGrid input,.formGrid select,.formGrid textarea{width:100%;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:13px;padding:13px 14px;font-size:16px;font-family:inherit}
+.formGrid textarea{resize:vertical;min-height:70px}
+.formGrid .wide{grid-column:1/-1}
+.progressTrack{height:10px;background:#242a35;border-radius:999px;overflow:hidden;margin:8px 0}
+.progressFill{height:100%;background:var(--accent);border-radius:999px}
+.badge{display:inline-block;font-size:11px;padding:4px 7px;border-radius:999px;background:var(--card2);border:1px solid var(--line);color:var(--muted)}
+.calendarItem,.goalItem,.liabilityItem,.recurringItem{border-top:1px solid var(--line);padding:11px 0}
+.calendarItem:first-child,.goalItem:first-child,.liabilityItem:first-child,.recurringItem:first-child{border-top:0}
+.statChart{width:100%;min-height:220px;overflow:hidden}
+.barList{display:flex;flex-direction:column;gap:9px}
+.barRow{display:grid;grid-template-columns:minmax(90px,1fr) 2fr auto;gap:8px;align-items:center;font-size:12px}
+.barTrack{height:9px;background:#242a35;border-radius:999px;overflow:hidden}
+.barFill{height:100%;background:var(--accent);border-radius:999px}
+.metricBig{font-size:24px;font-weight:850;margin-top:5px}
+.muted{color:var(--muted)}
+.positive{color:var(--good)}.negative{color:var(--bad)}
+@media(max-width:520px){.tabs{grid-template-columns:1fr}.miniGrid{grid-template-columns:1fr 1fr}.formGrid{grid-template-columns:1fr}.formGrid .wide{grid-column:auto}.barRow{grid-template-columns:minmax(78px,1fr) 1.4fr auto}}
 .tabBtn{border:1px solid var(--line);background:var(--card);color:var(--muted);border-radius:13px;padding:11px 12px;font-weight:750;cursor:pointer}
 .tabBtn.active{background:var(--accent);color:#fff;border-color:transparent}
 .page[hidden]{display:none!important}
@@ -84,6 +107,7 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 <div class="tabs">
   <button id="operationsTab" class="tabBtn active">💳 Операции</button>
   <button id="capitalTab" class="tabBtn">💼 Капитал</button>
+  <button id="statsTab" class="tabBtn">📊 Статистика</button>
 </div>
 <section id="operationsPage" class="page">
 <input id="month" class="month" type="month">
@@ -92,10 +116,13 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 <div class="stat"><small>Расходы</small><b id="expense" class="bad">0 ₽</b></div>
 <div class="stat balance"><small>Итог</small><b id="balance">0 ₽</b></div>
 </div>
-<button id="analyticsBtn" class="analyticsBtn">📊 Аналитика месяца</button>
+<div class="row" style="margin:2px 0 8px">
+<button id="analyticsBtn" class="action">📊 Аналитика месяца</button>
+<button id="recurringBtn" class="action">🔁 Регулярные</button>
+</div>
 <div class="voice">
 <button id="mic" aria-label="Голосовой ввод">🎙️</button>
-<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v1.9</div>
+<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v2.0</div>
 <div class="example">Например: «трата две тысячи продукты»<br>или «поступление 50 тысяч зарплата»</div>
 </div>
 <div class="manual">
@@ -115,34 +142,97 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 <section id="capitalPage" class="page" hidden>
   <div class="capitalStats">
     <div class="stat totalCapital"><small>Общий капитал</small><b id="capitalTotal">0 ₽</b></div>
+    <div class="stat"><small>Чистый капитал</small><b id="netWorth">0 ₽</b></div>
+    <div class="stat"><small>Обязательства</small><b id="liabilitiesTotal" class="bad">0 ₽</b></div>
     <div class="stat"><small>Доход / месяц*</small><b id="capitalMonthlyIncome" class="good">0 ₽</b></div>
     <div class="stat"><small>Доход / год*</small><b id="capitalAnnualIncome" class="good">0 ₽</b></div>
   </div>
 
   <div class="capitalChartCard">
-    <div class="capitalChartHead">
-      <div>
-        <h3>Рост капитала</h3>
-        <div class="capitalSub">Фактическая история + прогноз на 12 месяцев</div>
-      </div>
-    </div>
+    <div class="capitalChartHead"><div>
+      <h3>Рост капитала</h3>
+      <div class="capitalSub">Фактическая история + прогноз на 12 месяцев</div>
+    </div></div>
     <div id="capitalChart"></div>
     <div class="capitalLegend">
       <span><i class="legendLine"></i>Факт</span>
       <span><i class="legendLine forecast"></i>Прогноз</span>
     </div>
-    <div class="capitalSub" style="margin-top:8px">*Прогноз и доход рассчитаны по указанным ставкам, без налогов и рыночных колебаний.</div>
+    <div class="capitalSub" style="margin-top:8px">*Прогноз по указанным ставкам и плановому пополнению, без налогов и рыночных колебаний.</div>
+  </div>
+
+  <div class="miniGrid">
+    <div class="stat"><small>Внесено/выведено с начала истории</small><b id="capitalNetFlows">0 ₽</b></div>
+    <div class="stat"><small>Результат капитала без пополнений</small><b id="capitalGain">0 ₽</b></div>
   </div>
 
   <div class="capitalControls">
-    <input id="monthlyContribution" inputmode="decimal" placeholder="Пополнение в месяц, ₽">
-    <button id="saveContribution" class="action">Сохранить пополнение</button>
+    <input id="monthlyContribution" inputmode="decimal" placeholder="Плановое пополнение в месяц, ₽">
+    <button id="saveContribution" class="action">Сохранить план</button>
   </div>
 
-  <button id="addAssetBtn" class="addAssetBtn">＋ Добавить источник капитала</button>
+  <div class="row" style="margin-bottom:14px">
+    <button id="addAssetBtn" class="action">＋ Актив</button>
+    <button id="capitalFlowBtn" class="action">↕ Пополнение / вывод</button>
+  </div>
 
   <div class="section-title"><h2>Источники капитала</h2><span id="assetCount" class="count"></span></div>
   <div id="assetList" class="assetList"></div>
+
+  <div class="panel">
+    <div class="panelHead"><h3>💳 Долги и обязательства</h3><button id="addLiabilityBtn" class="smallBtn">＋ Добавить</button></div>
+    <div id="liabilityList"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panelHead"><h3>🎯 Финансовые цели</h3><button id="addGoalBtn" class="smallBtn">＋ Цель</button></div>
+    <div id="goalList"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panelHead"><h3>⏰ Календарь денег</h3><span class="badge">120 дней</span></div>
+    <div id="moneyCalendar"></div>
+  </div>
+</section>
+
+<section id="statsPage" class="page" hidden>
+  <div class="miniGrid">
+    <div class="stat"><small>Доходы в этом месяце</small><b id="statsIncome" class="good">0 ₽</b></div>
+    <div class="stat"><small>Расходы в этом месяце</small><b id="statsExpense" class="bad">0 ₽</b></div>
+    <div class="stat"><small>Сбережено</small><b id="statsSaved">0 ₽</b></div>
+    <div class="stat"><small>Норма сбережений</small><b id="statsSavingsRate">0%</b></div>
+  </div>
+
+  <div class="panel">
+    <h3>Денежный поток — 12 месяцев</h3>
+    <div id="monthlyFlowChart" class="statChart"></div>
+  </div>
+
+  <div class="miniGrid">
+    <div class="stat"><small>Чистый капитал</small><b id="statsNetWorth">0 ₽</b></div>
+    <div class="stat"><small>Доход капитала без пополнений</small><b id="statsCapitalGain">0 ₽</b></div>
+  </div>
+
+  <div class="panel">
+    <h3>🛡️ Резерв и ликвидность</h3>
+    <div class="miniGrid">
+      <div><div class="muted">Доступно сразу</div><div id="liqInstant" class="metricBig">0 ₽</div></div>
+      <div><div class="muted">Заблокировано до срока</div><div id="liqLocked" class="metricBig">0 ₽</div></div>
+      <div><div class="muted">Неликвидно</div><div id="liqIlliquid" class="metricBig">0 ₽</div></div>
+      <div><div class="muted">Подушка</div><div id="liqRunway" class="metricBig">0 мес.</div></div>
+    </div>
+    <div class="capitalSub">Подушка = мгновенно доступные деньги / средние расходы последних 3 месяцев.</div>
+  </div>
+
+  <div class="panel">
+    <h3>Топ расходов — текущий месяц</h3>
+    <div id="topExpenseBars" class="barList"></div>
+  </div>
+
+  <div class="panel">
+    <h3>Ближайшие финансовые события</h3>
+    <div id="statsCalendar"></div>
+  </div>
 </section>
 </div>
 <div id="toast"></div>
@@ -194,6 +284,11 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 <input id="assetName" class="wide" placeholder="Название, например «Вклад Альфа»">
 <input id="assetRate" inputmode="decimal" placeholder="Доходность, % годовых">
 <input id="assetNote" placeholder="Комментарий">
+<select id="assetLiquidity">
+<option value="Мгновенно">Мгновенная ликвидность</option>
+<option value="До срока">Заблокировано до срока</option>
+<option value="Неликвидно">Неликвидный актив</option>
+</select>
 <div class="assetDateField wide">
   <span>Дата погашения / окончания — необязательно</span>
   <input id="assetMaturity" type="date">
@@ -203,6 +298,58 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 <button class="action" id="cancelAsset">Отмена</button>
 <button class="action" id="saveAsset">Сохранить</button>
 </div>
+</div></div>
+
+<div id="capitalFlowModal" class="modal"><div class="settings">
+<h3>Пополнение / вывод капитала</h3>
+<div class="formGrid">
+<select id="flowSource" class="wide"></select>
+<input id="flowAmount" inputmode="decimal" placeholder="+50000 или -20000">
+<input id="flowDate" type="date">
+<input id="flowNote" class="wide" placeholder="Комментарий">
+</div>
+<div class="warning">Пополнение увеличит выбранный актив, вывод уменьшит. Эти движения учитываются отдельно от инвестиционного результата.</div>
+<div class="buttons"><button class="action" id="cancelFlow">Отмена</button><button class="action" id="saveFlow">Сохранить</button></div>
+</div></div>
+
+<div id="liabilityModal" class="modal"><div class="settings">
+<h3 id="liabilityModalTitle">Добавить обязательство</h3>
+<div class="formGrid">
+<select id="liabilityType"><option>Кредитная карта</option><option>Кредит</option><option>Рассрочка</option><option>Ипотека</option><option>Частный долг</option><option>Другое</option></select>
+<input id="liabilityBalance" inputmode="decimal" placeholder="Остаток долга, ₽">
+<input id="liabilityName" class="wide" placeholder="Название">
+<input id="liabilityRate" inputmode="decimal" placeholder="Ставка, %">
+<input id="liabilityMinPayment" inputmode="decimal" placeholder="Мин. платёж, ₽">
+<div class="assetDateField"><span>Дата платежа / погашения</span><input id="liabilityDue" type="date"></div>
+<div class="assetDateField"><span>Конец грейса</span><input id="liabilityGrace" type="date"></div>
+<input id="liabilityNote" class="wide" placeholder="Комментарий">
+</div>
+<div class="buttons"><button class="action" id="cancelLiability">Отмена</button><button class="action" id="saveLiability">Сохранить</button></div>
+</div></div>
+
+<div id="goalModal" class="modal"><div class="settings">
+<h3 id="goalModalTitle">Финансовая цель</h3>
+<div class="formGrid">
+<input id="goalName" class="wide" placeholder="Например: 3 млн капитала">
+<input id="goalAmount" inputmode="decimal" placeholder="Целевая сумма, ₽">
+<div class="assetDateField"><span>Желаемая дата — необязательно</span><input id="goalDate" type="date"></div>
+<input id="goalNote" class="wide" placeholder="Комментарий">
+</div>
+<div class="buttons"><button class="action" id="cancelGoal">Отмена</button><button class="action" id="saveGoal">Сохранить</button></div>
+</div></div>
+
+<div id="recurringModal" class="modal"><div class="settings" style="width:min(700px,100%);max-height:90vh;overflow:auto">
+<div class="panelHead"><h3>Регулярные операции</h3><button class="smallBtn" id="closeRecurring">Закрыть</button></div>
+<div class="formGrid" style="margin-top:12px">
+<input id="recurringName" class="wide" placeholder="Название, например Интернет">
+<select id="recurringType"><option value="expense">Расход</option><option value="income">Доход</option></select>
+<input id="recurringAmount" inputmode="decimal" placeholder="Сумма, ₽">
+<input id="recurringCategory" placeholder="Категория">
+<input id="recurringDay" inputmode="numeric" placeholder="День месяца, 1–31">
+<select id="recurringEnabled"><option value="true">Активна</option><option value="false">Выключена</option></select>
+<button id="saveRecurring" class="action">Сохранить</button>
+</div>
+<div id="recurringList" style="margin-top:14px"></div>
 </div></div>
 
 <div id="editModal" class="modal">
@@ -224,7 +371,7 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 
 <script>
 const $=s=>document.querySelector(s);
-const state={data:{income:0,expense:0,balance:0,operations:[]},lastId:null,editing:null,capital:{sources:[],history:[],total:0,expectedAnnualIncome:0,expectedMonthlyIncome:0,monthlyContribution:0},capitalEditing:null};
+const state={data:{income:0,expense:0,balance:0,operations:[]},lastId:null,editing:null,capital:{sources:[],history:[],flows:[],total:0,expectedAnnualIncome:0,expectedMonthlyIncome:0,monthlyContribution:0,liabilitiesTotal:0,netWorth:0,performance:{}},capitalEditing:null,liabilities:[],liabilityEditing:null,goals:[],goalEditing:null,recurring:[],recurringEditing:null,stats:null};
 const KAPI='vf_api', KKEY='vf_key';
 
 
@@ -237,7 +384,7 @@ function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('show');se
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 
 function canonicalForSign(p){
-  const order=['action','id','date','type','amount','category','raw','month','sourceType','name','rate','note','maturityDate','monthlyContribution','ts','nonce'];
+  const order=['action','id','date','type','amount','category','raw','month','sourceType','sourceId','name','rate','note','maturityDate','liquidity','liabilityType','balance','dueDate','graceEnd','minPayment','targetAmount','targetDate','dayOfMonth','enabled','monthlyContribution','flowAmount','flowNote','ts','nonce'];
   return order
     .filter(k=>p[k]!==undefined&&p[k]!==null)
     .map(k=>k+'='+encodeURIComponent(String(p[k])))
