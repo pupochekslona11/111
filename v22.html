@@ -741,6 +741,7 @@ async function loadCapital(force){
     const r=await apiNetwork({action:'capital_bundle'});
     applyCapitalBundle(r.data);
     await cacheWrite(key,r.data);
+    if(force)await cacheDrop(cacheKey('stats_dashboard'));
     setSyncStatus('✓ Синхронизировано','ok');
   }catch(e){
     setSyncStatus(cached?'⚠ Показаны локальные данные':'Ошибка синхронизации',cached?'warn':'bad');
@@ -1369,7 +1370,7 @@ async function save(op){
     await cacheDrop(cacheKey('stats_dashboard'));
     $('#hint').textContent=(op.type==='expense'?'Расход ':'Доход ')+rub(op.amount)+' — '+(op.category||'Без категории');
     toast('Записано');
-  }catch(e){$('#hint').textContent='Ошибка: '+e.message;toast(e.message)}
+  }catch(e){if(e.queued){$('#hint').textContent='Сохранено в очередь — отправится при подключении';toast('Сохранено офлайн')}else{$('#hint').textContent='Ошибка: '+e.message;toast(e.message)}}
 }
 
 const units={'ноль':0,'один':1,'одна':1,'одно':1,'два':2,'две':2,'три':3,'четыре':4,'пять':5,'шесть':6,'семь':7,'восемь':8,'девять':9,'десять':10,'одиннадцать':11,'двенадцать':12,'тринадцать':13,'четырнадцать':14,'пятнадцать':15,'шестнадцать':16,'семнадцать':17,'восемнадцать':18,'девятнадцать':19,'двадцать':20,'тридцать':30,'сорок':40,'пятьдесят':50,'шестьдесят':60,'семьдесят':70,'восемьдесят':80,'девяносто':90,'сто':100,'двести':200,'триста':300,'четыреста':400,'пятьсот':500,'шестьсот':600,'семьсот':700,'восемьсот':800,'девятьсот':900};
