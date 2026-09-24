@@ -552,18 +552,37 @@ async function saveEditedOperation(){
 }
 
 function switchPage(page){
-  const capital=page==='capital';
-  $('#operationsPage').hidden=capital;
-  $('#capitalPage').hidden=!capital;
-  $('#operationsTab').classList.toggle('active',!capital);
-  $('#capitalTab').classList.toggle('active',capital);
-  if(capital)loadCapital();
+  const isOps=page==='operations';
+  const isCapital=page==='capital';
+  const isStats=page==='stats';
+
+  $('#operationsPage').hidden=!isOps;
+  $('#capitalPage').hidden=!isCapital;
+  $('#statsPage').hidden=!isStats;
+
+  $('#operationsTab').classList.toggle('active',isOps);
+  $('#capitalTab').classList.toggle('active',isCapital);
+  $('#statsTab').classList.toggle('active',isStats);
+
+  if(isCapital)loadCapital();
+  if(isStats)loadStats();
 }
 
 async function loadCapital(){
   try{
-    const r=await api({action:'capital_dashboard'});
-    renderCapital(r.data);
+    const [cap,debts,goals,stats]=await Promise.all([
+      api({action:'capital_dashboard'}),
+      api({action:'liabilities_dashboard'}),
+      api({action:'goals_dashboard'}),
+      api({action:'stats_dashboard'})
+    ]);
+    state.liabilities=debts.data||[];
+    state.goals=goals.data||[];
+    state.stats=stats.data||null;
+    renderCapital(cap.data);
+    renderLiabilities();
+    renderGoals();
+    renderMoneyCalendar($('#moneyCalendar'),state.stats&&state.stats.calendar||[]);
   }catch(e){
     toast('Капитал: '+e.message);
   }
@@ -573,13 +592,10 @@ function maturityInfo(dateStr){
   if(!dateStr)return null;
   const m=String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if(!m)return null;
-
   const target=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]));
-  const now=new Date();
-  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const now=new Date(),today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
   const days=Math.ceil((target-today)/86400000);
   const label=target.toLocaleDateString('ru-RU');
-
   if(days<0)return {text:'Погашение: '+label+' · срок истёк '+Math.abs(days)+' дн. назад',className:'expired'};
   if(days===0)return {text:'Погашение: '+label+' · сегодня',className:'soon'};
   if(days<=30)return {text:'Погашение: '+label+' · осталось '+days+' дн.',className:'soon'};
@@ -589,9 +605,17 @@ function maturityInfo(dateStr){
 function renderCapital(data){
   state.capital=data||state.capital;
   $('#capitalTotal').textContent=rub(state.capital.total);
+  $('#netWorth').textContent=rub(state.capital.netWorth);
+  $('#netWorth').className=Number(state.capital.netWorth)>=0?'good':'bad';
+  $('#liabilitiesTotal').textContent=rub(state.capital.liabilitiesTotal);
   $('#capitalMonthlyIncome').textContent=rub(state.capital.expectedMonthlyIncome);
   $('#capitalAnnualIncome').textContent=rub(state.capital.expectedAnnualIncome);
   $('#monthlyContribution').value=Number(state.capital.monthlyContribution||0)||'';
+
+  const perf=state.capital.performance||{};
+  $('#capitalNetFlows').textContent=rub(perf.netFlows||0);
+  $('#capitalGain').textContent=(Number(perf.gain||0)>=0?'+':'')+rub(perf.gain||0);
+  $('#capitalGain').className=Number(perf.gain||0)>=0?'good':'bad';
 
   const list=$('#assetList');
   const sources=state.capital.sources||[];
@@ -599,39 +623,35 @@ function renderCapital(data){
   list.innerHTML='';
 
   if(!sources.length){
-    list.innerHTML='<div style="color:var(--muted);padding:10px 2px">Добавь первый источник капитала — вклад, брокерский счёт, наличные и т.д.</div>';
+    list.innerHTML='<div class="muted" style="padding:10px 2px">Добавь первый источник капитала — вклад, брокерский счёт, наличные и т.д.</div>';
   }else{
-    sources
-      .slice()
-      .sort((a,b)=>Number(b.amount)-Number(a.amount))
-      .forEach(source=>{
-        const el=document.createElement('div');
-        el.className='asset';
-        const monthly=(Number(source.amount)||0)*(Number(source.rate)||0)/100/12;
-        const maturity=maturityInfo(source.maturityDate);
+    sources.slice().sort((a,b)=>Number(b.amount)-Number(a.amount)).forEach(source=>{
+      const el=document.createElement('div');
+      el.className='asset';
+      const monthly=(Number(source.amount)||0)*(Number(source.rate)||0)/100/12;
+      const maturity=maturityInfo(source.maturityDate);
 
-        el.innerHTML=
-          '<div style="min-width:0;flex:1">'+
-            '<div class="assetName">'+esc(source.name)+'</div>'+
-            '<div class="assetMeta">'+esc(source.sourceType)+(source.note?' · '+esc(source.note):'')+'</div>'+
-            '<div class="assetMeta">'+Number(source.rate||0).toLocaleString('ru-RU',{maximumFractionDigits:2})+'% годовых</div>'+
-            (maturity?'<div class="assetMaturity '+maturity.className+'">'+esc(maturity.text)+'</div>':'')+
+      el.innerHTML=
+        '<div style="min-width:0;flex:1">'+
+          '<div class="assetName">'+esc(source.name)+'</div>'+
+          '<div class="assetMeta">'+esc(source.sourceType)+' · <span class="badge">'+esc(source.liquidity||'Не указано')+'</span>'+(source.note?' · '+esc(source.note):'')+'</div>'+
+          '<div class="assetMeta">'+Number(source.rate||0).toLocaleString('ru-RU',{maximumFractionDigits:2})+'% годовых</div>'+
+          (maturity?'<div class="assetMaturity '+maturity.className+'">'+esc(maturity.text)+'</div>':'')+
+        '</div>'+
+        '<div class="opRight">'+
+          '<div class="assetAmount">'+rub(source.amount)+'</div>'+
+          '<div class="assetYield">≈ '+rub(monthly)+'/мес</div>'+
+          '<div class="opActions">'+
+            '<button class="iconBtn editAssetBtn" aria-label="Редактировать">✏️</button>'+
+            '<button class="iconBtn delete deleteAssetBtn" aria-label="Удалить">🗑️</button>'+
           '</div>'+
-          '<div class="opRight">'+
-            '<div class="assetAmount">'+rub(source.amount)+'</div>'+
-            '<div class="assetYield">≈ '+rub(monthly)+'/мес</div>'+
-            '<div class="opActions">'+
-              '<button class="iconBtn editAssetBtn" aria-label="Редактировать">✏️</button>'+
-              '<button class="iconBtn delete deleteAssetBtn" aria-label="Удалить">🗑️</button>'+
-            '</div>'+
-          '</div>';
+        '</div>';
 
-        el.querySelector('.editAssetBtn').onclick=()=>openAssetModal(source);
-        el.querySelector('.deleteAssetBtn').onclick=()=>deleteAsset(source);
-        list.appendChild(el);
-      });
+      el.querySelector('.editAssetBtn').onclick=()=>openAssetModal(source);
+      el.querySelector('.deleteAssetBtn').onclick=()=>deleteAsset(source);
+      list.appendChild(el);
+    });
   }
-
   renderCapitalChart();
 }
 
@@ -644,6 +664,7 @@ function openAssetModal(source){
   $('#assetRate').value=source?source.rate:'';
   $('#assetNote').value=source?source.note:'';
   $('#assetMaturity').value=source?(source.maturityDate||''):'';
+  $('#assetLiquidity').value=source?(source.liquidity||'Мгновенно'):'До срока';
   $('#assetModal').classList.add('show');
 }
 
@@ -651,35 +672,29 @@ async function saveAsset(){
   const amount=Number(String($('#assetAmount').value).replace(',','.'));
   const rate=Number(String($('#assetRate').value||'0').replace(',','.'));
   const name=$('#assetName').value.trim();
-
   if(!name)return toast('Укажи название');
   if(!Number.isFinite(amount)||amount<0)return toast('Проверь сумму');
   if(!Number.isFinite(rate))return toast('Проверь доходность');
 
   const old=state.capitalEditing;
-  const params={
-    action:old?'capital_update':'capital_add',
-    id:old?old.id:uid(),
-    sourceType:$('#assetType').value,
-    name:name,
-    amount:amount,
-    rate:rate,
-    note:$('#assetNote').value.trim(),
-    maturityDate:$('#assetMaturity').value||''
-  };
-
   $('#saveAsset').disabled=true;
   try{
-    const r=await api(params);
+    const r=await api({
+      action:old?'capital_update':'capital_add',
+      id:old?old.id:uid(),
+      sourceType:$('#assetType').value,
+      name:name,amount:amount,rate:rate,
+      note:$('#assetNote').value.trim(),
+      maturityDate:$('#assetMaturity').value||'',
+      liquidity:$('#assetLiquidity').value
+    });
     state.capitalEditing=null;
     $('#assetModal').classList.remove('show');
     renderCapital(r.data);
+    await loadCapital();
     toast(old?'Источник обновлён':'Источник добавлен');
-  }catch(e){
-    toast(e.message);
-  }finally{
-    $('#saveAsset').disabled=false;
-  }
+  }catch(e){toast(e.message)}
+  finally{$('#saveAsset').disabled=false}
 }
 
 async function deleteAsset(source){
@@ -687,23 +702,45 @@ async function deleteAsset(source){
   try{
     const r=await api({action:'capital_delete',id:source.id});
     renderCapital(r.data);
+    await loadCapital();
     toast('Источник удалён');
-  }catch(e){
-    toast(e.message);
-  }
+  }catch(e){toast(e.message)}
 }
 
 async function saveMonthlyContribution(){
   const value=Number(String($('#monthlyContribution').value||'0').replace(',','.'));
   if(!Number.isFinite(value)||value<0)return toast('Проверь сумму пополнения');
-
   try{
     const r=await api({action:'capital_settings',monthlyContribution:value});
     renderCapital(r.data);
-    toast('Пополнение сохранено');
-  }catch(e){
-    toast(e.message);
-  }
+    renderGoals();
+    toast('Плановое пополнение сохранено');
+  }catch(e){toast(e.message)}
+}
+
+function openCapitalFlow(){
+  const sources=state.capital.sources||[];
+  if(!sources.length)return toast('Сначала добавь источник капитала');
+  $('#flowSource').innerHTML=sources.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+' · '+rub(s.amount)+'</option>').join('');
+  $('#flowAmount').value='';
+  $('#flowDate').value=dateNow();
+  $('#flowNote').value='';
+  $('#capitalFlowModal').classList.add('show');
+}
+
+async function saveCapitalFlow(){
+  const amount=Number(String($('#flowAmount').value).replace(',','.'));
+  if(!Number.isFinite(amount)||amount===0)return toast('Укажи сумму: + пополнение, − вывод');
+  try{
+    const r=await api({
+      action:'capital_flow_add',id:uid(),sourceId:$('#flowSource').value,
+      date:$('#flowDate').value||dateNow(),flowAmount:amount,flowNote:$('#flowNote').value.trim()
+    });
+    $('#capitalFlowModal').classList.remove('show');
+    renderCapital(r.data);
+    await loadCapital();
+    toast(amount>0?'Пополнение учтено':'Вывод учтён');
+  }catch(e){toast(e.message)}
 }
 
 function capitalForecast(){
@@ -713,14 +750,12 @@ function capitalForecast(){
   const monthlyContribution=Number(d.monthlyContribution)||0;
   const monthlyRate=total>0?(annual/total)/12:0;
   const out=[{label:'Сейчас',value:total}];
-
   let value=total;
   const base=new Date();
   for(let i=1;i<=12;i++){
     value=value*(1+monthlyRate)+monthlyContribution;
     const dt=new Date(base.getFullYear(),base.getMonth()+i,1);
-    const label=dt.toLocaleDateString('ru-RU',{month:'short',year:i===12?'numeric':undefined});
-    out.push({label:label,value:value});
+    out.push({label:dt.toLocaleDateString('ru-RU',{month:'short',year:i===12?'numeric':undefined}),value:value});
   }
   return out;
 }
@@ -729,44 +764,289 @@ function renderCapitalChart(){
   const root=$('#capitalChart');
   const history=(state.capital.history||[]).map(x=>({label:x.date,value:Number(x.total)||0}));
   const forecast=capitalForecast();
-
-  let actual=history.length?history:[{label:dateNow(),value:Number(state.capital.total)||0}];
-  const allValues=actual.map(x=>x.value).concat(forecast.map(x=>x.value));
-  const min=Math.min.apply(null,allValues.concat([0]));
-  const max=Math.max.apply(null,allValues.concat([1]));
-  const pad=Math.max((max-min)*0.08,1);
-  const lo=Math.max(0,min-pad);
-  const hi=max+pad;
+  const actual=history.length?history:[{label:dateNow(),value:Number(state.capital.total)||0}];
+  const all=actual.map(x=>x.value).concat(forecast.map(x=>x.value));
+  const max=Math.max.apply(null,all.concat([1]));
+  const min=Math.min.apply(null,all.concat([0]));
+  const pad=Math.max((max-min)*0.08,1),lo=Math.max(0,min-pad),hi=max+pad;
   const W=640,H=245,L=18,R=18,T=20,B=34;
-
-  const actualCount=Math.max(actual.length,1);
-  const totalSlots=Math.max(actualCount-1,0)+12;
-  const xFor=i=>L+(W-L-R)*(totalSlots?i/totalSlots:0.5);
-  const yFor=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo||1));
-
-  const aPts=actual.map((p,i)=>[xFor(i),yFor(p.value)]);
+  const totalSlots=Math.max(actual.length-1,0)+12;
+  const x=i=>L+(W-L-R)*(totalSlots?i/totalSlots:.5);
+  const y=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo||1));
+  const a=actual.map((p,i)=>[x(i),y(p.value)]);
   const startIndex=Math.max(actual.length-1,0);
-  const fPts=forecast.map((p,i)=>[xFor(startIndex+i),yFor(p.value)]);
-
+  const fp=forecast.map((p,i)=>[x(startIndex+i),y(p.value)]);
   const path=pts=>pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
-  const lastActual=actual[actual.length-1];
-  const lastForecast=forecast[forecast.length-1];
-
   root.innerHTML=
-    '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="245" role="img" aria-label="График капитала">'+
+    '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="245">'+
       '<line x1="'+L+'" y1="'+(H-B)+'" x2="'+(W-R)+'" y2="'+(H-B)+'" stroke="#2b3240"/>'+
-      '<line x1="'+L+'" y1="'+T+'" x2="'+(W-R)+'" y2="'+T+'" stroke="#242a35"/>'+
-      (aPts.length>1?'<path d="'+path(aPts)+'" fill="none" stroke="#78a2ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>':'')+
-      '<circle cx="'+aPts[aPts.length-1][0]+'" cy="'+aPts[aPts.length-1][1]+'" r="5" fill="#78a2ff"/>'+
-      '<path d="'+path(fPts)+'" fill="none" stroke="#9ba7bc" stroke-width="3" stroke-dasharray="9 7" stroke-linecap="round" stroke-linejoin="round"/>'+
+      (a.length>1?'<path d="'+path(a)+'" fill="none" stroke="#78a2ff" stroke-width="4" stroke-linecap="round"/>':'')+
+      '<circle cx="'+a[a.length-1][0]+'" cy="'+a[a.length-1][1]+'" r="5" fill="#78a2ff"/>'+
+      '<path d="'+path(fp)+'" fill="none" stroke="#9ba7bc" stroke-width="3" stroke-dasharray="9 7" stroke-linecap="round"/>'+
       '<text x="'+L+'" y="14" fill="#9ba7bc" font-size="11">'+esc(rub(hi))+'</text>'+
       '<text x="'+L+'" y="'+(H-8)+'" fill="#9ba7bc" font-size="11">'+esc(actual[0].label)+'</text>'+
       '<text x="'+(W-R)+'" y="'+(H-8)+'" fill="#9ba7bc" font-size="11" text-anchor="end">+12 мес</text>'+
     '</svg>'+
-    '<div style="display:flex;justify-content:space-between;gap:10px;margin-top:-4px;font-size:12px">'+
-      '<span style="color:var(--muted)">Сейчас: <b style="color:var(--text)">'+rub(lastActual.value)+'</b></span>'+
-      '<span style="color:var(--muted)">Прогноз: <b style="color:var(--text)">'+rub(lastForecast.value)+'</b></span>'+
+    '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)">'+
+      '<span>Сейчас: <b style="color:var(--text)">'+rub(actual[actual.length-1].value)+'</b></span>'+
+      '<span>Прогноз: <b style="color:var(--text)">'+rub(forecast[forecast.length-1].value)+'</b></span>'+
     '</div>';
+}
+
+function renderLiabilities(){
+  const root=$('#liabilityList');
+  const rows=state.liabilities||[];
+  root.innerHTML='';
+  if(!rows.length){root.innerHTML='<div class="muted" style="padding:10px 0">Обязательств пока нет.</div>';return}
+  rows.slice().sort((a,b)=>b.balance-a.balance).forEach(x=>{
+    const el=document.createElement('div');el.className='liabilityItem';
+    const due=x.dueDate?' · до '+new Date(x.dueDate+'T12:00:00').toLocaleDateString('ru-RU'):'';
+    const grace=x.graceEnd?' · грейс до '+new Date(x.graceEnd+'T12:00:00').toLocaleDateString('ru-RU'):'';
+    el.innerHTML='<div style="display:flex;justify-content:space-between;gap:10px"><div><b>'+esc(x.name)+'</b><div class="assetMeta">'+esc(x.liabilityType)+' · '+Number(x.rate||0).toLocaleString('ru-RU',{maximumFractionDigits:2})+'%'+due+grace+'</div>'+
+      (x.minPayment?'<div class="assetMeta">Мин. платёж: '+rub(x.minPayment)+'</div>':'')+
+      '</div><div class="opRight"><b class="bad">'+rub(x.balance)+'</b><div class="opActions"><button class="iconBtn editDebt">✏️</button><button class="iconBtn delete delDebt">🗑️</button></div></div></div>';
+    el.querySelector('.editDebt').onclick=()=>openLiability(x);
+    el.querySelector('.delDebt').onclick=()=>deleteLiability(x);
+    root.appendChild(el);
+  });
+}
+
+function openLiability(x){
+  state.liabilityEditing=x||null;
+  $('#liabilityModalTitle').textContent=x?'Редактировать обязательство':'Добавить обязательство';
+  $('#liabilityType').value=x?x.liabilityType:'Кредитная карта';
+  $('#liabilityName').value=x?x.name:'';
+  $('#liabilityBalance').value=x?x.balance:'';
+  $('#liabilityRate').value=x?x.rate:'';
+  $('#liabilityDue').value=x?(x.dueDate||''):'';
+  $('#liabilityGrace').value=x?(x.graceEnd||''):'';
+  $('#liabilityMinPayment').value=x?x.minPayment:'';
+  $('#liabilityNote').value=x?x.note:'';
+  $('#liabilityModal').classList.add('show');
+}
+
+async function saveLiability(){
+  const bal=Number(String($('#liabilityBalance').value).replace(',','.'));
+  const rate=Number(String($('#liabilityRate').value||'0').replace(',','.'));
+  const min=Number(String($('#liabilityMinPayment').value||'0').replace(',','.'));
+  const name=$('#liabilityName').value.trim();
+  if(!name)return toast('Укажи название долга');
+  if(!Number.isFinite(bal)||bal<0)return toast('Проверь остаток долга');
+  const old=state.liabilityEditing;
+  try{
+    const r=await api({
+      action:old?'liability_update':'liability_add',id:old?old.id:uid(),
+      liabilityType:$('#liabilityType').value,name:name,balance:bal,rate:rate,
+      dueDate:$('#liabilityDue').value||'',graceEnd:$('#liabilityGrace').value||'',
+      minPayment:min,note:$('#liabilityNote').value.trim()
+    });
+    state.liabilities=r.data||[];state.liabilityEditing=null;
+    $('#liabilityModal').classList.remove('show');
+    renderLiabilities();await loadCapital();toast('Обязательство сохранено');
+  }catch(e){toast(e.message)}
+}
+
+async function deleteLiability(x){
+  if(!confirm('Удалить обязательство «'+x.name+'»?'))return;
+  try{
+    const r=await api({action:'liability_delete',id:x.id});
+    state.liabilities=r.data||[];renderLiabilities();await loadCapital();toast('Удалено');
+  }catch(e){toast(e.message)}
+}
+
+function estimateGoalDate(target){
+  let value=Number(state.capital.total)||0;
+  if(value>=target)return 'Цель уже достигнута';
+  const monthly=Number(state.capital.monthlyContribution)||0;
+  const rate=value>0?(Number(state.capital.expectedAnnualIncome)||0)/value/12:0;
+  if(monthly<=0&&rate<=0)return 'Нет данных для прогноза';
+  const now=new Date();
+  for(let i=1;i<=600;i++){
+    value=value*(1+rate)+monthly;
+    if(value>=target){
+      const d=new Date(now.getFullYear(),now.getMonth()+i,1);
+      return '≈ '+d.toLocaleDateString('ru-RU',{month:'long',year:'numeric'});
+    }
+  }
+  return 'Более 50 лет';
+}
+
+function renderGoals(){
+  const root=$('#goalList'),rows=state.goals||[],current=Number(state.capital.total)||0;
+  root.innerHTML='';
+  if(!rows.length){root.innerHTML='<div class="muted" style="padding:10px 0">Целей пока нет.</div>';return}
+  rows.forEach(g=>{
+    const pct=Math.max(0,Math.min(100,g.targetAmount>0?current/g.targetAmount*100:0));
+    const el=document.createElement('div');el.className='goalItem';
+    el.innerHTML='<div style="display:flex;justify-content:space-between;gap:10px"><b>'+esc(g.name)+'</b><b>'+pct.toFixed(1)+'%</b></div>'+
+      '<div class="progressTrack"><div class="progressFill" style="width:'+pct+'%"></div></div>'+
+      '<div class="assetMeta">'+rub(current)+' / '+rub(g.targetAmount)+' · прогноз: '+esc(estimateGoalDate(g.targetAmount))+
+      (g.targetDate?' · цель к '+new Date(g.targetDate+'T12:00:00').toLocaleDateString('ru-RU'):'')+'</div>'+
+      '<div class="opActions" style="margin-top:8px"><button class="iconBtn editGoal">✏️</button><button class="iconBtn delete delGoal">🗑️</button></div>';
+    el.querySelector('.editGoal').onclick=()=>openGoal(g);
+    el.querySelector('.delGoal').onclick=()=>deleteGoal(g);
+    root.appendChild(el);
+  });
+}
+
+function openGoal(g){
+  state.goalEditing=g||null;
+  $('#goalModalTitle').textContent=g?'Редактировать цель':'Финансовая цель';
+  $('#goalName').value=g?g.name:'';
+  $('#goalAmount').value=g?g.targetAmount:'';
+  $('#goalDate').value=g?(g.targetDate||''):'';
+  $('#goalNote').value=g?g.note:'';
+  $('#goalModal').classList.add('show');
+}
+
+async function saveGoal(){
+  const target=Number(String($('#goalAmount').value).replace(',','.'));
+  const name=$('#goalName').value.trim();
+  if(!name)return toast('Укажи название цели');
+  if(!Number.isFinite(target)||target<=0)return toast('Проверь целевую сумму');
+  const old=state.goalEditing;
+  try{
+    const r=await api({
+      action:old?'goal_update':'goal_add',id:old?old.id:uid(),name:name,
+      targetAmount:target,targetDate:$('#goalDate').value||'',note:$('#goalNote').value.trim()
+    });
+    state.goals=r.data||[];state.goalEditing=null;$('#goalModal').classList.remove('show');
+    renderGoals();toast('Цель сохранена');
+  }catch(e){toast(e.message)}
+}
+
+async function deleteGoal(g){
+  if(!confirm('Удалить цель «'+g.name+'»?'))return;
+  try{const r=await api({action:'goal_delete',id:g.id});state.goals=r.data||[];renderGoals();toast('Цель удалена')}catch(e){toast(e.message)}
+}
+
+function renderMoneyCalendar(root,events){
+  if(!root)return;
+  root.innerHTML='';
+  if(!events.length){root.innerHTML='<div class="muted" style="padding:10px 0">На ближайшие 120 дней событий нет.</div>';return}
+  const today=new Date();today.setHours(0,0,0,0);
+  events.forEach(ev=>{
+    const d=new Date(ev.date+'T12:00:00');
+    const days=Math.max(0,Math.ceil((d-today)/86400000));
+    const el=document.createElement('div');el.className='calendarItem';
+    el.innerHTML='<div style="display:flex;justify-content:space-between;gap:10px"><div><b>'+esc(ev.name)+'</b><div class="assetMeta">'+esc(ev.type)+' · '+d.toLocaleDateString('ru-RU')+'</div></div><div style="text-align:right"><span class="badge">'+days+' дн.</span><div class="assetMeta">'+rub(ev.amount||0)+'</div></div></div>';
+    root.appendChild(el);
+  });
+}
+
+async function openRecurringManager(){
+  try{
+    const r=await api({action:'recurring_dashboard'});
+    state.recurring=r.data||[];state.recurringEditing=null;
+    clearRecurringForm();renderRecurring();$('#recurringModal').classList.add('show');
+  }catch(e){toast(e.message)}
+}
+
+function clearRecurringForm(){
+  $('#recurringName').value='';$('#recurringType').value='expense';$('#recurringAmount').value='';
+  $('#recurringCategory').value='';$('#recurringDay').value='';$('#recurringEnabled').value='true';
+  state.recurringEditing=null;
+}
+
+function renderRecurring(){
+  const root=$('#recurringList');root.innerHTML='';
+  if(!state.recurring.length){root.innerHTML='<div class="muted">Шаблонов пока нет.</div>';return}
+  state.recurring.forEach(x=>{
+    const el=document.createElement('div');el.className='recurringItem';
+    el.innerHTML='<div style="display:flex;justify-content:space-between;gap:10px"><div><b>'+esc(x.name)+'</b><div class="assetMeta">'+
+      (x.type==='income'?'Доход':'Расход')+' · '+rub(x.amount)+' · '+esc(x.category)+' · '+x.dayOfMonth+' число · '+(x.enabled?'активна':'выключена')+
+      '</div></div><div class="opActions"><button class="iconBtn editRec">✏️</button><button class="iconBtn delete delRec">🗑️</button></div></div>';
+    el.querySelector('.editRec').onclick=()=>editRecurring(x);
+    el.querySelector('.delRec').onclick=()=>deleteRecurring(x);
+    root.appendChild(el);
+  });
+}
+
+function editRecurring(x){
+  state.recurringEditing=x;
+  $('#recurringName').value=x.name;$('#recurringType').value=x.type;$('#recurringAmount').value=x.amount;
+  $('#recurringCategory').value=x.category;$('#recurringDay').value=x.dayOfMonth;$('#recurringEnabled').value=String(!!x.enabled);
+}
+
+async function saveRecurring(){
+  const amount=Number(String($('#recurringAmount').value).replace(',','.'));
+  const day=Number($('#recurringDay').value);
+  const name=$('#recurringName').value.trim();
+  if(!name)return toast('Укажи название');
+  if(!Number.isFinite(amount)||amount<=0)return toast('Проверь сумму');
+  if(!Number.isFinite(day)||day<1||day>31)return toast('День месяца: 1–31');
+  const old=state.recurringEditing;
+  try{
+    const r=await api({
+      action:old?'recurring_update':'recurring_add',id:old?old.id:uid(),
+      name:name,type:$('#recurringType').value,amount:amount,
+      category:($('#recurringCategory').value||'Без категории').trim(),
+      dayOfMonth:Math.floor(day),enabled:$('#recurringEnabled').value
+    });
+    state.recurring=r.data||[];clearRecurringForm();renderRecurring();toast('Регулярная операция сохранена');
+  }catch(e){toast(e.message)}
+}
+
+async function deleteRecurring(x){
+  if(!confirm('Удалить «'+x.name+'»?'))return;
+  try{const r=await api({action:'recurring_delete',id:x.id});state.recurring=r.data||[];renderRecurring();toast('Удалено')}catch(e){toast(e.message)}
+}
+
+async function loadStats(){
+  try{
+    const r=await api({action:'stats_dashboard'});
+    state.stats=r.data;renderStats(r.data);
+  }catch(e){toast('Статистика: '+e.message)}
+}
+
+function renderStats(d){
+  if(!d)return;
+  $('#statsIncome').textContent=rub(d.currentMonth.income);
+  $('#statsExpense').textContent=rub(d.currentMonth.expense);
+  $('#statsSaved').textContent=(d.currentMonth.saved>=0?'+':'')+rub(d.currentMonth.saved);
+  $('#statsSaved').className=d.currentMonth.saved>=0?'good':'bad';
+  $('#statsSavingsRate').textContent=Number(d.savingsRate||0).toLocaleString('ru-RU',{maximumFractionDigits:1})+'%';
+  $('#statsNetWorth').textContent=rub(d.netWorth);
+  $('#statsCapitalGain').textContent=(Number(d.capitalPerformance.gain||0)>=0?'+':'')+rub(d.capitalPerformance.gain||0);
+  $('#statsCapitalGain').className=Number(d.capitalPerformance.gain||0)>=0?'good':'bad';
+  $('#liqInstant').textContent=rub(d.liquidity.instant);
+  $('#liqLocked').textContent=rub(d.liquidity.locked);
+  $('#liqIlliquid').textContent=rub(d.liquidity.illiquid);
+  $('#liqRunway').textContent=Number(d.liquidity.runwayMonths||0).toLocaleString('ru-RU',{maximumFractionDigits:1})+' мес.';
+  renderMonthlyFlowChart(d.monthly||[]);
+  renderTopExpenseBars(d.topCategories||[]);
+  renderMoneyCalendar($('#statsCalendar'),d.calendar||[]);
+}
+
+function renderMonthlyFlowChart(rows){
+  const root=$('#monthlyFlowChart');
+  if(!rows.length){root.innerHTML='<div class="muted">Нет данных.</div>';return}
+  const W=650,H=220,L=24,R=8,T=12,B=30;
+  const max=Math.max.apply(null,rows.flatMap(x=>[x.income,x.expense]).concat([1]));
+  const group=(W-L-R)/rows.length;
+  const bw=Math.max(4,Math.min(14,group*.28));
+  let svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="220">';
+  svg+='<line x1="'+L+'" y1="'+(H-B)+'" x2="'+(W-R)+'" y2="'+(H-B)+'" stroke="#2b3240"/>';
+  rows.forEach((r,i)=>{
+    const cx=L+group*i+group/2;
+    const ih=(H-T-B)*(r.income/max),eh=(H-T-B)*(r.expense/max);
+    svg+='<rect x="'+(cx-bw-2)+'" y="'+(H-B-ih)+'" width="'+bw+'" height="'+ih+'" rx="3" fill="#4fd58a"/>';
+    svg+='<rect x="'+(cx+2)+'" y="'+(H-B-eh)+'" width="'+bw+'" height="'+eh+'" rx="3" fill="#ff646d"/>';
+    if(i%2===0||i===rows.length-1)svg+='<text x="'+cx+'" y="'+(H-9)+'" fill="#9ba7bc" font-size="9" text-anchor="middle">'+esc(r.label)+'</text>';
+  });
+  svg+='</svg><div class="capitalLegend"><span><i class="legendLine" style="background:#4fd58a"></i>Доход</span><span><i class="legendLine" style="background:#ff646d"></i>Расход</span></div>';
+  root.innerHTML=svg;
+}
+
+function renderTopExpenseBars(rows){
+  const root=$('#topExpenseBars');root.innerHTML='';
+  if(!rows.length){root.innerHTML='<div class="muted">В этом месяце расходов пока нет.</div>';return}
+  const max=Math.max.apply(null,rows.map(x=>x.value).concat([1]));
+  rows.forEach(x=>{
+    const el=document.createElement('div');el.className='barRow';
+    el.innerHTML='<div>'+esc(x.name)+'</div><div class="barTrack"><div class="barFill" style="width:'+(x.value/max*100)+'%"></div></div><div>'+rub(x.value)+'</div>';
+    root.appendChild(el);
+  });
 }
 
 function groupByCategory(type){
