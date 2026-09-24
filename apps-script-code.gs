@@ -1,5 +1,4 @@
 const SHEET_NAME = 'Операции';
-const API_KEY = 'PASTE_YOUR_PRIVATE_KEY_HERE';
 
 function setup() {
   const props = PropertiesService.getScriptProperties();
@@ -37,13 +36,25 @@ function setup() {
   return ss.getUrl();
 }
 
+function generateSecuritySecret() {
+  const props = PropertiesService.getScriptProperties();
+  const secret = [
+    Utilities.getUuid().replace(/-/g, ''),
+    Utilities.getUuid().replace(/-/g, '')
+  ].join('');
+
+  props.setProperty('SECURITY_SECRET', secret);
+  Logger.log('SECURITY_SECRET=' + secret);
+  return secret;
+}
+
 function doGet(e) {
   const p = (e && e.parameter) || {};
   const callback = String(p.callback || '').trim();
 
   if (!p.action) {
     return ContentService
-      .createTextOutput(JSON.stringify({ ok: true, service: 'voice-finance-api' }))
+      .createTextOutput(JSON.stringify({ ok: true, service: 'voice-finance-api-v2' }))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -68,9 +79,7 @@ function doGet(e) {
 
 function handleApi_(p) {
   try {
-    if (String(p.key || '') !== API_KEY) {
-      throw new Error('Неверный ключ доступа');
-    }
+    verifySignedRequest_(p);
 
     const action = String(p.action || '');
     const month = String(p.month || '');
@@ -100,6 +109,72 @@ function handleApi_(p) {
   } catch (err) {
     return { ok: false, error: err && err.message ? err.message : String(err) };
   }
+}
+
+function verifySignedRequest_(p) {
+  const secret = PropertiesService.getScriptProperties().getProperty('SECURITY_SECRET');
+  if (!secret) throw new Error('Защита не настроена: запусти generateSecuritySecret().');
+
+  const ts = Number(p.ts || 0);
+  const nonce = String(p.nonce || '');
+  const sig = String(p.sig || '').toLowerCase();
+
+  if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > 5 * 60 * 1000) {
+    throw new Error('Запрос устарел');
+  }
+
+  if (!/^[a-zA-Z0-9]{16,128}$/.test(nonce)) {
+    throw new Error('Некорректный nonce');
+  }
+
+  if (!/^[0-9a-f]{64}$/.test(sig)) {
+    throw new Error('Некорректная подпись');
+  }
+
+  const expected = bytesToHex_(
+    Utilities.computeHmacSha256Signature(
+      canonicalForSign_(p),
+      secret,
+      Utilities.Charset.UTF_8
+    )
+  );
+
+  if (!constantTimeEqual_(sig, expected)) {
+    throw new Error('Неверная подпись');
+  }
+
+  const cache = CacheService.getScriptCache();
+  const nonceKey = 'nonce:' + nonce;
+  if (cache.get(nonceKey)) {
+    throw new Error('Повторный запрос');
+  }
+  cache.put(nonceKey, '1', 600);
+}
+
+function canonicalForSign_(p) {
+  const order = ['action','id','date','type','amount','category','raw','month','ts','nonce'];
+  return order
+    .filter(k => p[k] !== undefined && p[k] !== null)
+    .map(k => k + '=' + encodeURIComponent(String(p[k])))
+    .join('&');
+}
+
+function bytesToHex_(bytes) {
+  return bytes
+    .map(b => {
+      const v = b < 0 ? b + 256 : b;
+      return ('0' + v.toString(16)).slice(-2);
+    })
+    .join('');
+}
+
+function constantTimeEqual_(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 function getSheet() {
