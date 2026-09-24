@@ -42,7 +42,7 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 </div>
 <div class="voice">
 <button id="mic" aria-label="Голосовой ввод">🎙️</button>
-<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v1.5</div>
+<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v1.6</div>
 <div class="example">Например: «трата две тысячи продукты»<br>или «поступление 50 тысяч зарплата»</div>
 </div>
 <div class="manual">
@@ -64,8 +64,8 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 <div class="settings">
 <h3>Настройки подключения</h3>
 <label>Apps Script URL</label><input id="apiInput" placeholder="https://script.google.com/macros/s/.../exec">
-<label>Ключ</label><input id="keyInput" type="password" placeholder="Ключ доступа">
-<div class="warning">Эти данные хранятся только в браузере на этом устройстве.</div>
+<label>Секретный ключ устройства</label><input id="keyInput" type="password" placeholder="Секрет из Apps Script">
+<div class="warning">Секрет хранится только в браузере на этом устройстве и не отправляется на сервер напрямую.</div>
 <div class="buttons"><button class="action" id="closeSettings">Закрыть</button><button class="action" id="saveSettings">Сохранить</button></div>
 </div></div>
 
@@ -91,14 +91,6 @@ const $=s=>document.querySelector(s);
 const state={data:{income:0,expense:0,balance:0,operations:[]},lastId:null,editing:null};
 const KAPI='vf_api', KKEY='vf_key';
 
-(function bootstrapConfig(){
-  const p=new URLSearchParams(location.hash.slice(1));
-  if(p.get('api')&&p.get('key')){
-    localStorage.setItem(KAPI,p.get('api'));
-    localStorage.setItem(KKEY,p.get('key'));
-    history.replaceState(null,'',location.pathname+location.search);
-  }
-})();
 
 function cfg(){return {api:localStorage.getItem(KAPI)||'',key:localStorage.getItem(KKEY)||''}}
 function rub(n){return new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(Number(n)||0)}
@@ -108,22 +100,61 @@ function uid(){return crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.
 function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2400)}
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 
-function api(params){
+function canonicalForSign(p){
+  const order=['action','id','date','type','amount','category','raw','month','ts','nonce'];
+  return order
+    .filter(k=>p[k]!==undefined&&p[k]!==null)
+    .map(k=>k+'='+encodeURIComponent(String(p[k])))
+    .join('&');
+}
+
+async function hmacHex(secret,message){
+  const enc=new TextEncoder();
+  const key=await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    {name:'HMAC',hash:'SHA-256'},
+    false,
+    ['sign']
+  );
+  const sig=await crypto.subtle.sign('HMAC',key,enc.encode(message));
+  return Array.from(new Uint8Array(sig)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+async function api(params){
+  const c=cfg();
+  if(!c.api||!c.key){
+    openSettings();
+    throw new Error('Сначала настрой подключение');
+  }
+
+  const signed=Object.assign({},params,{
+    ts:String(Date.now()),
+    nonce:(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random()).replace(/-/g,'')
+  });
+
+  signed.sig=await hmacHex(c.key,canonicalForSign(signed));
+
   return new Promise((resolve,reject)=>{
-    const c=cfg();
-    if(!c.api||!c.key){openSettings();return reject(new Error('Сначала настрой подключение'))}
     const cb='vf_'+Date.now()+'_'+Math.random().toString(36).slice(2);
     const s=document.createElement('script');
     const timer=setTimeout(()=>done(new Error('Сервер не ответил')),18000);
+
     function cleanup(){clearTimeout(timer);delete window[cb];s.remove()}
     function done(err,data){cleanup();err?reject(err):resolve(data)}
+
     window[cb]=data=>{
-      if(!data||data.ok===false) done(new Error((data&&data.error)||'Ошибка API'));
+      if(!data||data.ok===false)done(new Error((data&&data.error)||'Ошибка API'));
       else done(null,data);
     };
+
     const u=new URL(c.api);
-    Object.entries(Object.assign({},params,{key:c.key,callback:cb,_:Date.now()})).forEach(([k,v])=>u.searchParams.set(k,v));
-    s.src=u.toString(); s.async=true; s.onerror=()=>done(new Error('Не удалось подключиться к Apps Script'));
+    Object.entries(Object.assign({},signed,{callback:cb,_:Date.now()}))
+      .forEach(([k,v])=>u.searchParams.set(k,v));
+
+    s.src=u.toString();
+    s.async=true;
+    s.onerror=()=>done(new Error('Не удалось подключиться к Apps Script'));
     document.head.appendChild(s);
   });
 }
