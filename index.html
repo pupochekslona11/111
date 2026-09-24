@@ -122,7 +122,7 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 </div>
 <div class="voice">
 <button id="mic" aria-label="Голосовой ввод">🎙️</button>
-<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v2.0</div>
+<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v2.1</div>
 <div class="example">Например: «трата две тысячи продукты»<br>или «поступление 50 тысяч зарплата»</div>
 </div>
 <div class="manual">
@@ -421,7 +421,7 @@ async function api(params){
   return new Promise((resolve,reject)=>{
     const cb='vf_'+Date.now()+'_'+Math.random().toString(36).slice(2);
     const s=document.createElement('script');
-    const timer=setTimeout(()=>done(new Error('Сервер не ответил')),18000);
+    const timer=setTimeout(()=>done(new Error('Сервер не ответил')),45000);
 
     function cleanup(){clearTimeout(timer);delete window[cb];s.remove()}
     function done(err,data){cleanup();err?reject(err):resolve(data)}
@@ -570,19 +570,14 @@ function switchPage(page){
 
 async function loadCapital(){
   try{
-    const [cap,debts,goals,stats]=await Promise.all([
-      api({action:'capital_dashboard'}),
-      api({action:'liabilities_dashboard'}),
-      api({action:'goals_dashboard'}),
-      api({action:'stats_dashboard'})
-    ]);
-    state.liabilities=debts.data||[];
-    state.goals=goals.data||[];
-    state.stats=stats.data||null;
-    renderCapital(cap.data);
+    const r=await api({action:'capital_bundle'});
+    const d=r.data||{};
+    state.liabilities=d.liabilities||[];
+    state.goals=d.goals||[];
+    renderCapital(d.capital||{});
     renderLiabilities();
     renderGoals();
-    renderMoneyCalendar($('#moneyCalendar'),state.stats&&state.stats.calendar||[]);
+    renderMoneyCalendar($('#moneyCalendar'),d.calendar||[]);
   }catch(e){
     toast('Капитал: '+e.message);
   }
