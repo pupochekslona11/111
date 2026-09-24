@@ -1,5 +1,5 @@
 const SHEET_NAME = 'Операции';
-const API_KEY = 'ywIISRMGJ49Ln4zFjhF4ChGlwq9DY0i_';
+const API_KEY = 'PASTE_YOUR_PRIVATE_KEY_HERE';
 
 function setup() {
   const props = PropertiesService.getScriptProperties();
