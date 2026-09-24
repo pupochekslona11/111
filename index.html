@@ -26,6 +26,21 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 .editGrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
 .editGrid input,.editGrid select{width:100%;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:13px;padding:13px 14px;font-size:16px}
 .editGrid .wide{grid-column:1/-1}
+.analyticsBtn{width:100%;margin:2px 0 16px;background:var(--card2);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:13px 14px;font-weight:750;font-size:15px;cursor:pointer}
+.analyticsWrap{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
+.analyticsCard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px}
+.analyticsCard h4{margin:0 0 12px;font-size:16px}
+.donutRow{display:flex;align-items:center;gap:14px}
+.donut{width:132px;height:132px;border-radius:50%;position:relative;flex:0 0 auto}
+.donut:after{content:"";position:absolute;inset:25px;border-radius:50%;background:#151922}
+.donutCenter{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:2;text-align:center;font-size:12px;font-weight:800;line-height:1.15;padding:34px}
+.legend{display:flex;flex-direction:column;gap:7px;min-width:0;flex:1}
+.legendItem{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:7px;align-items:center;font-size:12px}
+.legendDot{width:10px;height:10px;border-radius:50%}
+.legendName{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.legendValue{color:var(--muted);white-space:nowrap}
+.analyticsEmpty{color:var(--muted);font-size:13px;padding:20px 0;text-align:center}
+@media(max-width:560px){.analyticsWrap{grid-template-columns:1fr}.donut{width:120px;height:120px}.donut:after{inset:23px}.donutCenter{padding:31px}}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#272d39;color:#fff;padding:11px 15px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;max-width:90%;text-align:center;z-index:20}#toast.show{opacity:1}
 .modal{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;padding:18px;z-index:15}.modal.show{display:flex}.settings{width:min(560px,100%);background:#151922;border:1px solid var(--line);border-radius:18px;padding:18px}.settings h3{margin:0 0 12px}.settings label{display:block;color:var(--muted);font-size:13px;margin:12px 0 6px}.settings input{width:100%}.settings .buttons{display:flex;gap:9px;margin-top:14px}.settings .buttons button{flex:1}.warning{background:#2a2114;border:1px solid #4a3820;border-radius:12px;padding:11px;color:#f0c883;font-size:13px;margin-top:10px}
 @media(max-width:480px){.wrap{padding:14px 12px 34px}h1{font-size:24px}.stat{padding:14px}#mic{width:104px;height:104px}}
@@ -40,9 +55,10 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 <div class="stat"><small>Расходы</small><b id="expense" class="bad">0 ₽</b></div>
 <div class="stat balance"><small>Итог</small><b id="balance">0 ₽</b></div>
 </div>
+<button id="analyticsBtn" class="analyticsBtn">📊 Аналитика месяца</button>
 <div class="voice">
 <button id="mic" aria-label="Голосовой ввод">🎙️</button>
-<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v1.6</div>
+<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v1.7</div>
 <div class="example">Например: «трата две тысячи продукты»<br>или «поступление 50 тысяч зарплата»</div>
 </div>
 <div class="manual">
@@ -67,6 +83,22 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 <label>Секретный ключ устройства</label><input id="keyInput" type="password" placeholder="Секрет из Apps Script">
 <div class="warning">Секрет хранится только в браузере на этом устройстве и не отправляется на сервер напрямую.</div>
 <div class="buttons"><button class="action" id="closeSettings">Закрыть</button><button class="action" id="saveSettings">Сохранить</button></div>
+</div></div>
+
+<div id="analyticsModal" class="modal">
+<div class="settings" style="width:min(720px,100%)">
+<h3>Аналитика за <span id="analyticsMonthLabel"></span></h3>
+<div class="analyticsWrap">
+  <div class="analyticsCard">
+    <h4 class="bad">Расходы по категориям</h4>
+    <div id="expenseChart"></div>
+  </div>
+  <div class="analyticsCard">
+    <h4 class="good">Доходы по категориям</h4>
+    <div id="incomeChart"></div>
+  </div>
+</div>
+<div class="buttons"><button class="action" id="closeAnalytics">Закрыть</button></div>
 </div></div>
 
 <div id="editModal" class="modal">
@@ -268,6 +300,95 @@ async function saveEditedOperation(){
   }
 }
 
+function groupByCategory(type){
+  const map=new Map();
+  (state.data.operations||[])
+    .filter(o=>o.type===type)
+    .forEach(o=>{
+      const name=(o.category||'Без категории').trim()||'Без категории';
+      map.set(name,(map.get(name)||0)+(Number(o.amount)||0));
+    });
+
+  let rows=[...map.entries()]
+    .map(([name,value])=>({name,value}))
+    .sort((a,b)=>b.value-a.value);
+
+  // Чтобы круг не превращался в кашу: максимум 6 крупнейших + «Другое».
+  if(rows.length>7){
+    const head=rows.slice(0,6);
+    const other=rows.slice(6).reduce((s,x)=>s+x.value,0);
+    rows=head.concat([{name:'Другое',value:other}]);
+  }
+  return rows;
+}
+
+function chartPalette(){
+  return ['#7aa2ff','#61d095','#ffc857','#ff7a90','#a78bfa','#4dd0e1','#ff9f43'];
+}
+
+function renderDonut(targetId,rows){
+  const root=document.getElementById(targetId);
+  root.innerHTML='';
+
+  const total=rows.reduce((s,x)=>s+x.value,0);
+  if(!(total>0)){
+    root.innerHTML='<div class="analyticsEmpty">За этот месяц данных пока нет.</div>';
+    return;
+  }
+
+  const colors=chartPalette();
+  let cursor=0;
+  const stops=rows.map((r,i)=>{
+    const start=cursor;
+    cursor+=r.value/total*100;
+    return colors[i%colors.length]+' '+start.toFixed(2)+'% '+cursor.toFixed(2)+'%';
+  });
+
+  const wrap=document.createElement('div');
+  wrap.className='donutRow';
+
+  const donut=document.createElement('div');
+  donut.className='donut';
+  donut.style.background='conic-gradient('+stops.join(',')+')';
+
+  const center=document.createElement('div');
+  center.className='donutCenter';
+  center.textContent=rub(total);
+  donut.appendChild(center);
+
+  const legend=document.createElement('div');
+  legend.className='legend';
+
+  rows.forEach((r,i)=>{
+    const pct=r.value/total*100;
+    const item=document.createElement('div');
+    item.className='legendItem';
+    item.innerHTML=
+      '<span class="legendDot" style="background:'+colors[i%colors.length]+'"></span>'+
+      '<span class="legendName">'+esc(r.name)+'</span>'+
+      '<span class="legendValue">'+rub(r.value)+' · '+pct.toFixed(pct>=10?0:1)+'%</span>';
+    legend.appendChild(item);
+  });
+
+  wrap.appendChild(donut);
+  wrap.appendChild(legend);
+  root.appendChild(wrap);
+}
+
+function openAnalytics(){
+  const month=$('#month').value;
+  let label=month;
+  if(/^\d{4}-\d{2}$/.test(month)){
+    const [y,m]=month.split('-');
+    const names=['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+    label=names[Number(m)-1]+' '+y;
+  }
+  $('#analyticsMonthLabel').textContent=label;
+  renderDonut('expenseChart',groupByCategory('expense'));
+  renderDonut('incomeChart',groupByCategory('income'));
+  $('#analyticsModal').classList.add('show');
+}
+
 async function load(){
   try{
     $('#hint').textContent='Обновляю данные…';
@@ -444,6 +565,8 @@ function parseCommand(raw){
 }
 
 $('#month').value=monthNow();$('#month').addEventListener('change',load);
+$('#analyticsBtn').onclick=openAnalytics;
+$('#closeAnalytics').onclick=()=>$('#analyticsModal').classList.remove('show');
 $('#cancelEdit').onclick=()=>{state.editing=null;$('#editModal').classList.remove('show')};
 $('#saveEdit').onclick=saveEditedOperation;
 $('#saveManual').onclick=()=>{const a=Number($('#amount').value.replace(',','.'));if(!(a>0))return toast('Введи сумму');save({type:$('#type').value,amount:a,category:($('#category').value||'Без категории').trim(),raw:'Ручной ввод'});$('#amount').value='';$('#category').value=''};
