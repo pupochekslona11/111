@@ -41,6 +41,33 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 .legendValue{color:var(--muted);white-space:nowrap}
 .analyticsEmpty{color:var(--muted);font-size:13px;padding:20px 0;text-align:center}
 @media(max-width:560px){.analyticsWrap{grid-template-columns:1fr}.donut{width:120px;height:120px}.donut:after{inset:23px}.donutCenter{padding:31px}}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 14px}
+.tabBtn{border:1px solid var(--line);background:var(--card);color:var(--muted);border-radius:13px;padding:11px 12px;font-weight:750;cursor:pointer}
+.tabBtn.active{background:var(--accent);color:#fff;border-color:transparent}
+.page[hidden]{display:none!important}
+.capitalStats{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin:12px 0}
+.capitalStats .totalCapital{grid-column:1/-1}
+.capitalChartCard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;margin:12px 0}
+.capitalChartHead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:8px}
+.capitalChartHead h3{margin:0;font-size:18px}
+.capitalSub{font-size:12px;color:var(--muted);line-height:1.4}
+#capitalChart{width:100%;min-height:245px;overflow:hidden}
+.capitalLegend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:4px}
+.legendLine{display:inline-block;width:24px;height:3px;background:var(--accent);vertical-align:middle;margin-right:6px;border-radius:3px}
+.legendLine.forecast{background:repeating-linear-gradient(90deg,#9ba7bc 0 7px,transparent 7px 11px)}
+.capitalControls{display:grid;grid-template-columns:1fr auto;gap:8px;margin:12px 0}
+.capitalControls input{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:13px;padding:13px 14px;font-size:16px;min-width:0}
+.assetList{display:flex;flex-direction:column;gap:8px}
+.asset{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:13px;display:flex;justify-content:space-between;gap:12px}
+.assetName{font-weight:800}
+.assetMeta{color:var(--muted);font-size:12px;margin-top:4px;line-height:1.4}
+.assetAmount{font-weight:850;white-space:nowrap;text-align:right}
+.assetYield{color:var(--good);font-size:12px;text-align:right;margin-top:4px}
+.assetEditor{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.assetEditor input,.assetEditor select{width:100%;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:13px;padding:13px 14px;font-size:16px}
+.assetEditor .wide{grid-column:1/-1}
+.addAssetBtn{width:100%;margin:10px 0 16px;background:var(--accent);color:white;border:0;border-radius:14px;padding:13px 14px;font-weight:800;font-size:15px;cursor:pointer}
+@media(max-width:480px){.capitalStats{grid-template-columns:1fr 1fr}.capitalControls{grid-template-columns:1fr}.asset{align-items:flex-start}}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#272d39;color:#fff;padding:11px 15px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;max-width:90%;text-align:center;z-index:20}#toast.show{opacity:1}
 .modal{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;padding:18px;z-index:15}.modal.show{display:flex}.settings{width:min(560px,100%);background:#151922;border:1px solid var(--line);border-radius:18px;padding:18px}.settings h3{margin:0 0 12px}.settings label{display:block;color:var(--muted);font-size:13px;margin:12px 0 6px}.settings input{width:100%}.settings .buttons{display:flex;gap:9px;margin-top:14px}.settings .buttons button{flex:1}.warning{background:#2a2114;border:1px solid #4a3820;border-radius:12px;padding:11px;color:#f0c883;font-size:13px;margin-top:10px}
 @media(max-width:480px){.wrap{padding:14px 12px 34px}h1{font-size:24px}.stat{padding:14px}#mic{width:104px;height:104px}}
@@ -49,6 +76,11 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 <body>
 <div class="wrap">
 <header><h1>💰 Мои финансы</h1><button class="gear" id="settingsBtn" aria-label="Настройки">⚙️</button></header>
+<div class="tabs">
+  <button id="operationsTab" class="tabBtn active">💳 Операции</button>
+  <button id="capitalTab" class="tabBtn">💼 Капитал</button>
+</div>
+<section id="operationsPage" class="page">
 <input id="month" class="month" type="month">
 <div class="stats">
 <div class="stat"><small>Доходы</small><b id="income" class="good">0 ₽</b></div>
@@ -58,7 +90,7 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 <button id="analyticsBtn" class="analyticsBtn">📊 Аналитика месяца</button>
 <div class="voice">
 <button id="mic" aria-label="Голосовой ввод">🎙️</button>
-<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v1.7</div>
+<div id="hint">Нажми и скажи операцию</div><div id="build" style="font-size:10px;color:#596274;margin-top:2px">v1.8</div>
 <div class="example">Например: «трата две тысячи продукты»<br>или «поступление 50 тысяч зарплата»</div>
 </div>
 <div class="manual">
@@ -73,6 +105,40 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 </div>
 <div class="section-title"><h2>Операции</h2><span id="count" class="count"></span></div>
 <div id="ops" class="ops"></div>
+</section>
+
+<section id="capitalPage" class="page" hidden>
+  <div class="capitalStats">
+    <div class="stat totalCapital"><small>Общий капитал</small><b id="capitalTotal">0 ₽</b></div>
+    <div class="stat"><small>Доход / месяц*</small><b id="capitalMonthlyIncome" class="good">0 ₽</b></div>
+    <div class="stat"><small>Доход / год*</small><b id="capitalAnnualIncome" class="good">0 ₽</b></div>
+  </div>
+
+  <div class="capitalChartCard">
+    <div class="capitalChartHead">
+      <div>
+        <h3>Рост капитала</h3>
+        <div class="capitalSub">Фактическая история + прогноз на 12 месяцев</div>
+      </div>
+    </div>
+    <div id="capitalChart"></div>
+    <div class="capitalLegend">
+      <span><i class="legendLine"></i>Факт</span>
+      <span><i class="legendLine forecast"></i>Прогноз</span>
+    </div>
+    <div class="capitalSub" style="margin-top:8px">*Прогноз и доход рассчитаны по указанным ставкам, без налогов и рыночных колебаний.</div>
+  </div>
+
+  <div class="capitalControls">
+    <input id="monthlyContribution" inputmode="decimal" placeholder="Пополнение в месяц, ₽">
+    <button id="saveContribution" class="action">Сохранить пополнение</button>
+  </div>
+
+  <button id="addAssetBtn" class="addAssetBtn">＋ Добавить источник капитала</button>
+
+  <div class="section-title"><h2>Источники капитала</h2><span id="assetCount" class="count"></span></div>
+  <div id="assetList" class="assetList"></div>
+</section>
 </div>
 <div id="toast"></div>
 
@@ -101,6 +167,34 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 <div class="buttons"><button class="action" id="closeAnalytics">Закрыть</button></div>
 </div></div>
 
+<div id="assetModal" class="modal">
+<div class="settings">
+<h3 id="assetModalTitle">Добавить источник капитала</h3>
+<div class="assetEditor">
+<select id="assetType">
+<option>Вклад</option>
+<option>Накопительный счёт</option>
+<option>Брокерский счёт</option>
+<option>Фонд ликвидности</option>
+<option>Акции</option>
+<option>Облигации</option>
+<option>Криптовалюта</option>
+<option>Наличные</option>
+<option>Недвижимость</option>
+<option>Бизнес</option>
+<option>Другое</option>
+</select>
+<input id="assetAmount" inputmode="decimal" placeholder="Текущая сумма, ₽">
+<input id="assetName" class="wide" placeholder="Название, например «Вклад Альфа»">
+<input id="assetRate" inputmode="decimal" placeholder="Доходность, % годовых">
+<input id="assetNote" placeholder="Комментарий">
+</div>
+<div class="buttons">
+<button class="action" id="cancelAsset">Отмена</button>
+<button class="action" id="saveAsset">Сохранить</button>
+</div>
+</div></div>
+
 <div id="editModal" class="modal">
 <div class="settings">
 <h3>Редактировать операцию</h3>
@@ -120,7 +214,7 @@ button.action{background:var(--card2);color:var(--text);border:1px solid var(--l
 
 <script>
 const $=s=>document.querySelector(s);
-const state={data:{income:0,expense:0,balance:0,operations:[]},lastId:null,editing:null};
+const state={data:{income:0,expense:0,balance:0,operations:[]},lastId:null,editing:null,capital:{sources:[],history:[],total:0,expectedAnnualIncome:0,expectedMonthlyIncome:0,monthlyContribution:0},capitalEditing:null};
 const KAPI='vf_api', KKEY='vf_key';
 
 
@@ -133,7 +227,7 @@ function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('show');se
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 
 function canonicalForSign(p){
-  const order=['action','id','date','type','amount','category','raw','month','ts','nonce'];
+  const order=['action','id','date','type','amount','category','raw','month','sourceType','name','rate','note','monthlyContribution','ts','nonce'];
   return order
     .filter(k=>p[k]!==undefined&&p[k]!==null)
     .map(k=>k+'='+encodeURIComponent(String(p[k])))
@@ -298,6 +392,203 @@ async function saveEditedOperation(){
   }finally{
     $('#saveEdit').disabled=false;
   }
+}
+
+function switchPage(page){
+  const capital=page==='capital';
+  $('#operationsPage').hidden=capital;
+  $('#capitalPage').hidden=!capital;
+  $('#operationsTab').classList.toggle('active',!capital);
+  $('#capitalTab').classList.toggle('active',capital);
+  if(capital)loadCapital();
+}
+
+async function loadCapital(){
+  try{
+    const r=await api({action:'capital_dashboard'});
+    renderCapital(r.data);
+  }catch(e){
+    toast('Капитал: '+e.message);
+  }
+}
+
+function renderCapital(data){
+  state.capital=data||state.capital;
+  $('#capitalTotal').textContent=rub(state.capital.total);
+  $('#capitalMonthlyIncome').textContent=rub(state.capital.expectedMonthlyIncome);
+  $('#capitalAnnualIncome').textContent=rub(state.capital.expectedAnnualIncome);
+  $('#monthlyContribution').value=Number(state.capital.monthlyContribution||0)||'';
+
+  const list=$('#assetList');
+  const sources=state.capital.sources||[];
+  $('#assetCount').textContent=sources.length+' шт.';
+  list.innerHTML='';
+
+  if(!sources.length){
+    list.innerHTML='<div style="color:var(--muted);padding:10px 2px">Добавь первый источник капитала — вклад, брокерский счёт, наличные и т.д.</div>';
+  }else{
+    sources
+      .slice()
+      .sort((a,b)=>Number(b.amount)-Number(a.amount))
+      .forEach(source=>{
+        const el=document.createElement('div');
+        el.className='asset';
+        const monthly=(Number(source.amount)||0)*(Number(source.rate)||0)/100/12;
+
+        el.innerHTML=
+          '<div style="min-width:0;flex:1">'+
+            '<div class="assetName">'+esc(source.name)+'</div>'+
+            '<div class="assetMeta">'+esc(source.sourceType)+(source.note?' · '+esc(source.note):'')+'</div>'+
+            '<div class="assetMeta">'+Number(source.rate||0).toLocaleString('ru-RU',{maximumFractionDigits:2})+'% годовых</div>'+
+          '</div>'+
+          '<div class="opRight">'+
+            '<div class="assetAmount">'+rub(source.amount)+'</div>'+
+            '<div class="assetYield">≈ '+rub(monthly)+'/мес</div>'+
+            '<div class="opActions">'+
+              '<button class="iconBtn editAssetBtn" aria-label="Редактировать">✏️</button>'+
+              '<button class="iconBtn delete deleteAssetBtn" aria-label="Удалить">🗑️</button>'+
+            '</div>'+
+          '</div>';
+
+        el.querySelector('.editAssetBtn').onclick=()=>openAssetModal(source);
+        el.querySelector('.deleteAssetBtn').onclick=()=>deleteAsset(source);
+        list.appendChild(el);
+      });
+  }
+
+  renderCapitalChart();
+}
+
+function openAssetModal(source){
+  state.capitalEditing=source||null;
+  $('#assetModalTitle').textContent=source?'Редактировать источник':'Добавить источник капитала';
+  $('#assetType').value=source?source.sourceType:'Вклад';
+  $('#assetName').value=source?source.name:'';
+  $('#assetAmount').value=source?source.amount:'';
+  $('#assetRate').value=source?source.rate:'';
+  $('#assetNote').value=source?source.note:'';
+  $('#assetModal').classList.add('show');
+}
+
+async function saveAsset(){
+  const amount=Number(String($('#assetAmount').value).replace(',','.'));
+  const rate=Number(String($('#assetRate').value||'0').replace(',','.'));
+  const name=$('#assetName').value.trim();
+
+  if(!name)return toast('Укажи название');
+  if(!Number.isFinite(amount)||amount<0)return toast('Проверь сумму');
+  if(!Number.isFinite(rate))return toast('Проверь доходность');
+
+  const old=state.capitalEditing;
+  const params={
+    action:old?'capital_update':'capital_add',
+    id:old?old.id:uid(),
+    sourceType:$('#assetType').value,
+    name:name,
+    amount:amount,
+    rate:rate,
+    note:$('#assetNote').value.trim()
+  };
+
+  $('#saveAsset').disabled=true;
+  try{
+    const r=await api(params);
+    state.capitalEditing=null;
+    $('#assetModal').classList.remove('show');
+    renderCapital(r.data);
+    toast(old?'Источник обновлён':'Источник добавлен');
+  }catch(e){
+    toast(e.message);
+  }finally{
+    $('#saveAsset').disabled=false;
+  }
+}
+
+async function deleteAsset(source){
+  if(!confirm('Удалить «'+source.name+'» из капитала?'))return;
+  try{
+    const r=await api({action:'capital_delete',id:source.id});
+    renderCapital(r.data);
+    toast('Источник удалён');
+  }catch(e){
+    toast(e.message);
+  }
+}
+
+async function saveMonthlyContribution(){
+  const value=Number(String($('#monthlyContribution').value||'0').replace(',','.'));
+  if(!Number.isFinite(value)||value<0)return toast('Проверь сумму пополнения');
+
+  try{
+    const r=await api({action:'capital_settings',monthlyContribution:value});
+    renderCapital(r.data);
+    toast('Пополнение сохранено');
+  }catch(e){
+    toast(e.message);
+  }
+}
+
+function capitalForecast(){
+  const d=state.capital||{};
+  const total=Number(d.total)||0;
+  const annual=Number(d.expectedAnnualIncome)||0;
+  const monthlyContribution=Number(d.monthlyContribution)||0;
+  const monthlyRate=total>0?(annual/total)/12:0;
+  const out=[{label:'Сейчас',value:total}];
+
+  let value=total;
+  const base=new Date();
+  for(let i=1;i<=12;i++){
+    value=value*(1+monthlyRate)+monthlyContribution;
+    const dt=new Date(base.getFullYear(),base.getMonth()+i,1);
+    const label=dt.toLocaleDateString('ru-RU',{month:'short',year:i===12?'numeric':undefined});
+    out.push({label:label,value:value});
+  }
+  return out;
+}
+
+function renderCapitalChart(){
+  const root=$('#capitalChart');
+  const history=(state.capital.history||[]).map(x=>({label:x.date,value:Number(x.total)||0}));
+  const forecast=capitalForecast();
+
+  let actual=history.length?history:[{label:dateNow(),value:Number(state.capital.total)||0}];
+  const allValues=actual.map(x=>x.value).concat(forecast.map(x=>x.value));
+  const min=Math.min.apply(null,allValues.concat([0]));
+  const max=Math.max.apply(null,allValues.concat([1]));
+  const pad=Math.max((max-min)*0.08,1);
+  const lo=Math.max(0,min-pad);
+  const hi=max+pad;
+  const W=640,H=245,L=18,R=18,T=20,B=34;
+
+  const actualCount=Math.max(actual.length,1);
+  const totalSlots=Math.max(actualCount-1,0)+12;
+  const xFor=i=>L+(W-L-R)*(totalSlots?i/totalSlots:0.5);
+  const yFor=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo||1));
+
+  const aPts=actual.map((p,i)=>[xFor(i),yFor(p.value)]);
+  const startIndex=Math.max(actual.length-1,0);
+  const fPts=forecast.map((p,i)=>[xFor(startIndex+i),yFor(p.value)]);
+
+  const path=pts=>pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  const lastActual=actual[actual.length-1];
+  const lastForecast=forecast[forecast.length-1];
+
+  root.innerHTML=
+    '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="245" role="img" aria-label="График капитала">'+
+      '<line x1="'+L+'" y1="'+(H-B)+'" x2="'+(W-R)+'" y2="'+(H-B)+'" stroke="#2b3240"/>'+
+      '<line x1="'+L+'" y1="'+T+'" x2="'+(W-R)+'" y2="'+T+'" stroke="#242a35"/>'+
+      (aPts.length>1?'<path d="'+path(aPts)+'" fill="none" stroke="#78a2ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>':'')+
+      '<circle cx="'+aPts[aPts.length-1][0]+'" cy="'+aPts[aPts.length-1][1]+'" r="5" fill="#78a2ff"/>'+
+      '<path d="'+path(fPts)+'" fill="none" stroke="#9ba7bc" stroke-width="3" stroke-dasharray="9 7" stroke-linecap="round" stroke-linejoin="round"/>'+
+      '<text x="'+L+'" y="14" fill="#9ba7bc" font-size="11">'+esc(rub(hi))+'</text>'+
+      '<text x="'+L+'" y="'+(H-8)+'" fill="#9ba7bc" font-size="11">'+esc(actual[0].label)+'</text>'+
+      '<text x="'+(W-R)+'" y="'+(H-8)+'" fill="#9ba7bc" font-size="11" text-anchor="end">+12 мес</text>'+
+    '</svg>'+
+    '<div style="display:flex;justify-content:space-between;gap:10px;margin-top:-4px;font-size:12px">'+
+      '<span style="color:var(--muted)">Сейчас: <b style="color:var(--text)">'+rub(lastActual.value)+'</b></span>'+
+      '<span style="color:var(--muted)">Прогноз: <b style="color:var(--text)">'+rub(lastForecast.value)+'</b></span>'+
+    '</div>';
 }
 
 function groupByCategory(type){
@@ -565,6 +856,12 @@ function parseCommand(raw){
 }
 
 $('#month').value=monthNow();$('#month').addEventListener('change',load);
+$('#operationsTab').onclick=()=>switchPage('operations');
+$('#capitalTab').onclick=()=>switchPage('capital');
+$('#addAssetBtn').onclick=()=>openAssetModal(null);
+$('#cancelAsset').onclick=()=>{state.capitalEditing=null;$('#assetModal').classList.remove('show')};
+$('#saveAsset').onclick=saveAsset;
+$('#saveContribution').onclick=saveMonthlyContribution;
 $('#analyticsBtn').onclick=openAnalytics;
 $('#closeAnalytics').onclick=()=>$('#analyticsModal').classList.remove('show');
 $('#cancelEdit').onclick=()=>{state.editing=null;$('#editModal').classList.remove('show')};
