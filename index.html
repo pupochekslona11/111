@@ -155,13 +155,13 @@ function wordNumber(tokens){
   return {value:total+current,used:used};
 }
 function parseCommand(raw){
-  let text=raw.toLowerCase().replace(/ё/g,'е').replace(/[^p{L}p{N},. ]/gu,' ').replace(/s+/g,' ').trim();
+  let text=raw.toLowerCase().replace(/ё/g,'е').replace(/[^\p{L}\p{N},. ]/gu,' ').replace(/\s+/g,' ').trim();
   const inc=['поступление','доход','приход','получил','получила','зарплата','зачисление'];
   const exp=['трата','расход','потратил','потратила','заплатил','заплатила','купил','купила','оплата'];
   let type=inc.some(w=>text.includes(w))?'income':null;if(exp.some(w=>text.includes(w)))type='expense';
   if(!type)throw new Error('Скажи «трата» или «поступление»');
   const tokens=text.split(' ');let amount=0,used=[];
-  const idx=tokens.findIndex(w=>/^d+(?:[.,]d{1,2})?$/.test(w));
+  const idx=tokens.findIndex(w=>/^\d+(?:[.,]\d{1,2})?$/.test(w));
   if(idx>=0){
     amount=Number(tokens[idx].replace(',','.'));used.push(idx);
     if(tokens[idx+1]&&Object.prototype.hasOwnProperty.call(scales,tokens[idx+1])){amount*=scales[tokens[idx+1]];used.push(idx+1)}
@@ -185,7 +185,7 @@ if(SR){
   rec.onstart=()=>{$('#mic').classList.add('listening');$('#hint').textContent='Слушаю…'};
   rec.onend=()=>$('#mic').classList.remove('listening');
   rec.onerror=e=>{$('#mic').classList.remove('listening');$('#hint').textContent=e.error==='not-allowed'?'Разреши микрофон для этого сайта':'Ошибка микрофона: '+e.error};
-  rec.onresult=e=>{const raw=e.results[0][0].transcript;$('#hint').textContent='Услышал: '+raw;try{save(parseCommand(raw))}catch(err){$('#hint').textContent=err.message+' — «'+raw+'»';toast(err.message)}};
+  rec.onresult=e=>{const raw=e.results[0][0].transcript;$('#hint').textContent='Услышал: '+raw;try{const op=parseCommand(raw);$('#type').value=op.type;$('#amount').value=op.amount;$('#category').value=op.category;save(op)}catch(err){$('#hint').textContent=err.message+' — «'+raw+'»';toast(err.message)}};
 }else{$('#mic').disabled=true;$('#hint').textContent='Открой приложение в Chrome: этот браузер не поддерживает голосовой ввод'}
 
 function openSettings(){const c=cfg();$('#apiInput').value=c.api;$('#keyInput').value=c.key;$('#settingsModal').classList.add('show')}
